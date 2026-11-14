@@ -9,16 +9,22 @@ public, or synthetic demonstration content.
 
 ## Current implementation status
 
-**Phase 0 — Repository foundation.** This repository currently contains the engineering
-foundation only: project structure, dependency management, configuration, security rules, Docker
-infrastructure, CI, agent instructions, integration contracts, and documentation.
+**Milestone 1 — Document Management (complete).** On top of the Phase 0 foundation, the project now
+supports uploading PDF documents and managing them:
 
-- The backend exposes a minimal `GET /health` endpoint used for infrastructure validation.
-- The frontend is a minimal Streamlit placeholder.
-- No document ingestion, embeddings, retrieval, or LLM features are implemented yet.
+- **Backend (FastAPI):** `POST /documents` (upload + validate + extract + persist),
+  `GET /documents` (list), `GET /documents/{id}` (metadata/status), plus `GET /health`.
+- **Frontend (Streamlit):** a professional document-management UI — PDF upload, a document
+  collection table with status badges, and loading / empty / success / error states. It talks to the
+  backend over HTTP only.
+- Documents are stored locally as `<id>.pdf` + `<id>.json` under `.data/documents` (git-ignored).
+  Encrypted or malformed PDFs are stored with `status: "error"` and a reason; invalid uploads are
+  rejected with `400`.
 
-See [docs/roadmap.md](docs/roadmap.md) for the full plan and
-[docs/handoffs/01-platform.md](docs/handoffs/01-platform.md) for the Phase 0 handoff.
+**Not yet implemented (future milestones):** chunking, embeddings, vector storage, retrieval, LLM
+integration, grounded answers, and source citations. The frontend "Ask" page is a clearly-labelled
+placeholder and provides no AI functionality. See [docs/roadmap.md](docs/roadmap.md) and
+[docs/handoffs/01-platform.md](docs/handoffs/01-platform.md).
 
 ## Planned features
 
@@ -59,12 +65,12 @@ enterprise-ai-document-assistant/
 │  └─ skills/              #   reusable skills (implement-feature, review-change)
 ├─ .github/workflows/      # CI (lint, format check, tests)
 ├─ src/enterprise_ai_document_assistant/
-│  ├─ api/                 # FastAPI application (main.py -> app)
+│  ├─ api/                 # FastAPI application (main.py -> app; documents.py router)
 │  ├─ core/                # shared configuration
-│  ├─ services/            # backend services (future)
+│  ├─ services/documents/  # document management: models, validation, extraction, storage, service
 │  ├─ rag/                 # future RAG orchestration
 │  └─ providers/           # future LLM/embedding/vector providers
-├─ frontend/               # Streamlit application (app.py entrypoint)
+├─ frontend/               # Streamlit application (app.py + api/ client + components/)
 ├─ tests/
 │  ├─ backend/             # Agent 2-owned
 │  ├─ frontend/            # Agent 3-owned
@@ -141,8 +147,8 @@ transfer checklist.
 
 ## Development roadmap
 
-- **Phase 0** — Repository foundation *(current)*
-- **Phase 1** — PDF upload and text extraction
+- **Phase 0** — Repository foundation *(complete)*
+- **Phase 1 / Milestone 1** — PDF upload and text extraction *(complete)*
 - **Phase 2** — Chunking and vector storage
 - **Phase 3** — Retrieval and LLM integration
 - **Phase 4** — Citations and frontend improvements

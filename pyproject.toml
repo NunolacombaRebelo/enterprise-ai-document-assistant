@@ -9,12 +9,14 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "pydantic-settings>=2.4",
     "streamlit>=1.36",
+    "pypdf>=4",
+    # Runtime HTTP client used by the Streamlit frontend (frontend/api/client.py).
+    "httpx>=0.27",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=8.2",
-    "httpx>=0.27",
     "ruff>=0.5",
 ]
 

@@ -3,7 +3,7 @@
 The project is delivered in phases. Each phase builds on the previous one. Phase 0 establishes the
 engineering foundation; later phases add functionality.
 
-## Phase 0 — Repository foundation *(current)*
+## Phase 0 — Repository foundation *(complete)*
 - Project structure (src layout), dependency management (uv + lockfile).
 - Configuration and security (`.env.example`, `.gitignore`, `.dockerignore`, `.editorconfig`).
 - Agent instructions (`AGENTS.md`), Kilo rules and skills, integration contracts.
@@ -14,12 +14,17 @@ engineering foundation; later phases add functionality.
 **Exit criteria:** reproducible `uv sync --locked`; lint/format/tests pass; Docker Compose valid;
 agents can begin work without restructuring the repository.
 
-## Phase 1 — PDF upload and text extraction
-- Backend endpoint to accept PDF uploads.
-- PDF text extraction service.
-- Store extracted content in runtime data (not committed).
-- Frontend upload UI.
-- *(Agent 2: backend; Agent 3: frontend.)*
+## Phase 1 / Milestone 1 — PDF upload and text extraction *(complete)*
+- Backend `POST /documents` accepts PDF uploads; validates type/size/magic/filename/path-traversal.
+- PDF text extraction + page count via `pypdf`; encrypted/malformed PDFs stored as `error`.
+- Local persistence under `.data/documents` (`<id>.pdf` + `<id>.json`, git-ignored).
+- `GET /documents` (list) and `GET /documents/{id}` (metadata/status).
+- Frontend document-management UI: upload, collection table with status badges, and
+  loading/empty/success/error states.
+- *(Agent 2: backend; Agent 3: frontend; Agent 1: dependencies, contract, integration.)*
+
+**Exit criteria:** upload/processing/listing/inspection operational end-to-end (native + Docker);
+contract matches implementation; automated checks pass; runtime documents stay out of version control.
 
 ## Phase 2 — Chunking and vector storage
 - Text chunking service.

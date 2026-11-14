@@ -1,23 +1,41 @@
 """Streamlit frontend entrypoint.
 
-PLACEHOLDER — owned by Agent 3 (Frontend Engineering). This minimal stub exists only so the
-frontend service can start and so Agent 3 has a concrete entrypoint to build on. It does not
-implement any user-facing functionality.
+This is the application shell: it configures the page, builds the API client from the configured
+``API_BASE_URL``, checks backend availability, renders the sidebar navigation, and dispatches to
+the active page. All document operations go through the HTTP API client; no backend internals are
+imported and no PDF processing happens here.
 
-Agent 3 will replace this with the real UI (document upload, question input, grounded answers
-with citations) and an HTTP client that talks to the backend at ``API_BASE_URL``. See
-``docs/contracts/api.md`` for the contract and ``docs/handoffs/03-frontend.md`` for the handoff.
+Owned by Agent 3 (Frontend Engineering). See ``docs/frontend.md`` for the architecture and
+``docs/contracts/api.md`` for the integration contract.
 """
 
 from __future__ import annotations
 
-import os
+import logging
 
-import streamlit as st
+from frontend.api.client import DocumentAPIClient
+from frontend.components import chat, documents, layout
 
-API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000")
+from frontend import state
 
-st.set_page_config(page_title="Enterprise AI Document Assistant", page_icon=":file_cabinet:")
-st.title("Enterprise AI Document Assistant")
-st.caption("Phase 0 placeholder. The full frontend is built by the Frontend Engineering agent.")
-st.info(f"This is a Phase 0 placeholder. Backend health endpoint: {API_BASE_URL}/health")
+logger = logging.getLogger(__name__)
+
+
+def main() -> None:
+    """Application entrypoint, run on every Streamlit rerun."""
+    layout.setup_page()
+    state.init_state()
+
+    client = DocumentAPIClient()
+    layout.check_backend(client)
+
+    page = layout.render_sidebar(client)
+    layout.render_banner()
+
+    if page == layout.NAV_DOCUMENTS:
+        documents.render_documents_page(client)
+    else:
+        chat.render_ask_page()
+
+
+main()

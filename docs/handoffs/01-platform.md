@@ -1,9 +1,46 @@
-# Handoff — Agent 1 (Platform & Architecture) — Phase 0
+# Handoff — Agent 1 (Platform & Architecture)
 
 ## Current status
-Phase 0 (Repository foundation) is **complete**. The repository is initialized on `main`, the
-engineering foundation is in place, and Agents 2 and 3 can begin work without restructuring the
-repository. No remote is configured and nothing has been pushed.
+**Milestone 1 (Document Management) is complete and integrated.** All three agents have finished
+their Milestone 1 work and Agent 1 has performed the final integration, quality review, and Git
+consolidation. The repository is on `main` (single branch, single worktree, no remote, nothing
+pushed).
+
+Milestone 1 delivers: PDF upload + validation + text extraction + local persistence on the backend,
+and a professional document-management UI on the frontend (upload, collection table with status
+badges, loading/empty/success/error states). The AI chat / RAG / embeddings / vector store are **not**
+part of this milestone.
+
+## Coordination log
+
+### 2026-11-14 — Milestone 1 final integration (Agent 1)
+Two integration defects were found during end-to-end validation and fixed within Agent 1 ownership:
+- **`httpx` was a dev-only dependency but the frontend client imports it at runtime.** A production
+  (`--no-dev`) install did not include it, so the Docker frontend image would crash on import.
+  Moved `httpx>=0.27` to runtime dependencies in `pyproject.toml`, re-locked (`uv lock`, 57
+  packages), and verified it survives a `--no-dev` install and is present in the built frontend image.
+- **Docker api container could not write to the mounted data volume.** The named volume at
+  `/app/.data` is initialised root-owned, but the container runs as non-root `appuser`. Added
+  `docker/api-entrypoint.sh` (runs as root, chowns the volume, then drops to `appuser` via `gosu`)
+  and updated `docker/api.Dockerfile` (installs `gosu`, sets the entrypoint). Verified upload/list/get
+  and persistence in the volume over the Dockerized API.
+Both fixes are in Agent 1-owned files only (`pyproject.toml`, `uv.lock`, `docker/`). No Agent 2/3
+files were modified for these fixes.
+
+### 2026-11-14 — Milestone 1: `pypdf` dependency + API contract (Agent 2 request)
+- **Dependency:** added `pypdf>=4` to `pyproject.toml` runtime dependencies; regenerated
+  `uv.lock` with the real resolver (`uv lock`, now 57 packages, `pypdf 7.1.0` locked with hash).
+  Verified reproducible install with `uv sync --locked` and a clean `import pypdf`.
+- **Contract:** updated `docs/contracts/api.md` with the Milestone 1 document endpoints
+  (`POST /documents`, `GET /documents`, `GET /documents/{document_id}`), the `DocumentMetadata` /
+  `DocumentListResponse` models, status codes, and error behaviour — verified against the actual
+  implementation and an end-to-end smoke test.
+- **Validation run by Agent 1:** `uv run ruff check src tests/backend tests/integration` (passed),
+  `uv run ruff format --check src tests/backend tests/integration` (passed, 18 files),
+  `uv run pytest tests/backend tests/integration` (**35 passed**), app import + OpenAPI path check
+  (all four endpoints present), end-to-end TestClient smoke test (201/200/404/400 + `/health`).
+- **Status for Agent 2:** the blocking item is resolved. Re-sync with `uv sync --locked`; CI will now
+  include `pypdf`. No commit was made (Agents 2/3 have uncommitted changes).
 
 ## Completed work
 - Git repository initialized on `main` with a local identity (no remote, no push).
@@ -33,31 +70,46 @@ See `docs/decisions/`:
 - 0005 Modular monolith
 - 0006 AI-agent development rules and multi-agent ownership
 
-## Validation results
-Executed on this machine (Windows):
-- `uv lock` — resolved 56 packages.
-- `uv sync --locked` — installed 55 packages into `.venv/`.
-- Import + `GET /health` via TestClient — returned `200 {"status":"ok"}`.
-- `uv run ruff check .` — passed. `uv run ruff format --check .` — passed (37 files).
-  `uv run pytest` — **8 passed**.
-- `docker compose config` — valid.
-- `docker compose build` — both images (`api`, `frontend`) built successfully.
-- `docker compose up -d` (on alternate host ports to avoid a port clash with other local
-  containers) — both containers reached **healthy**; `GET /health` → `{"status":"ok"}`; frontend
-  `/_stcore/health` → `ok`, root → HTTP 200. Stack torn down after verification.
+## Validation results (Milestone 1 integration, executed on this machine, Windows)
+Dependency / environment:
+- `uv sync --locked` — clean install from the lockfile (57 packages).
+- `uv run ruff check .` — **passed**. `uv run ruff format --check .` — **passed** (58 files).
+- `uv run pytest` — **87 passed** (backend + frontend + integration).
+- App starts without LLM credentials (`OPENAI_API_KEY` unset → `None`).
+- Production (`--no-dev`) venv verified to include `httpx`, `pypdf`, `streamlit`, `fastapi`.
+
+Integration (real HTTP, synthetic PDFs only):
+- Live uvicorn backend + frontend `DocumentAPIClient`: health, upload valid 2-page PDF → `processed`
+  (`page_count=2`), list, get-by-id, unknown id → `404`, non-PDF → `400`, encrypted PDF → stored as
+  `error` with reason, persistence (`.pdf` + `.json`), frontend offline state → typed error. **13/13**.
+- Real Streamlit server started; health endpoint `ok`; frontend client reports "Backend connected"
+  against a live backend.
+
+Docker:
+- `docker compose config` — valid. `docker compose build` — both images built.
+- `docker compose up -d` (alternate host ports 18000/18501 to avoid a clash with unrelated local
+  containers) — both containers **healthy**. Upload/list/get through the Dockerized API all correct;
+  non-PDF → `400`. Persistence in the named volume confirmed (files owned by `appuser`). Frontend
+  reaches the backend over the internal network (`http://api:8000/health` → `{"status":"ok"}`).
+  Stack torn down after verification; only resources created for this check were removed.
 
 ## Known limitations
 - Cross-platform (Linux) validation was not executed here; the repo is designed to be portable but
   Linux runs are documented, not tested, on this machine.
-- The frontend is a placeholder only; no real UI logic exists yet.
-- Docker runtime was verified on alternate host ports (18000/18501) because ports 8000/8501 were
-  already in use by unrelated containers on this machine; the default ports in `compose.yaml` are
-  unchanged and correct for a clean machine.
+- Browser-based manual verification of the Streamlit UI was **not** performed in this environment;
+  the UI was validated via Streamlit's `AppTest` (in-process render) and by confirming the live
+  frontend server + client connectivity. A human should click through the UI once for final sign-off.
+- Document deletion is not exposed (no `DELETE /documents/{id}` endpoint in the contract yet).
+- Scanned/image-only PDFs are classified `processed` with empty text (OCR is out of scope).
+- Docker runtime was verified on alternate host ports because 8000/8501 were occupied by unrelated
+  containers; the documented defaults in `compose.yaml` are unchanged and correct for a clean machine.
 
-## Remaining tasks (for later phases)
-- Phase 1+: backend endpoints, services, RAG, providers (Agent 2); real frontend (Agent 3).
-- Add LangChain/ChromaDB/OpenAI dependencies only when their phase begins, via Agent 1 coordination.
-- Expand integration tests as cross-service behavior lands.
+## Remaining tasks (for later milestones — NOT started)
+- Milestone 2 (Phase 2): chunking, embeddings, ChromaDB indexing (requires LangChain/ChromaDB via
+  Agent 1 coordination).
+- Milestone 3 (Phase 3): retrieval + LLM integration (requires an LLM provider via Agent 1).
+- Milestone 4 (Phase 4): source citations + richer frontend detail view.
+- Add document deletion once the backend exposes it.
 
 ## Instructions for Agents 2 and 3
 1. Read `AGENTS.md` first, then `docs/contracts/api.md` and `docs/contracts/ownership.md`.

@@ -12,6 +12,7 @@ import logging
 
 from fastapi import FastAPI
 
+from enterprise_ai_document_assistant.api.documents import router as documents_router
 from enterprise_ai_document_assistant.core.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -23,9 +24,12 @@ app = FastAPI(
     title="Enterprise AI Document Assistant",
     version="0.1.0",
     description=(
-        "AI document assistant for small businesses. Phase 0 exposes the health endpoint only."
+        "AI document assistant for small businesses. Milestone 1 exposes the health endpoint and "
+        "document management endpoints."
     ),
 )
+
+app.include_router(documents_router)
 
 
 @app.get("/health")

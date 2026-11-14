@@ -18,12 +18,68 @@ are coordinated through Agent 1 (see `ownership.md`).
 The backend must start without an OpenAI API key. The health endpoint is used by infrastructure,
 Docker health checks, and the frontend to confirm the backend is reachable.
 
-### Phase 0 endpoint list
+### Endpoint list
 
 - `GET /health` → `200` `{"status": "ok"}`
+- Milestone 1 (Document Management): `POST /documents`, `GET /documents`, `GET /documents/{document_id}` — see below.
 
-Additional endpoints (document upload, question, retrieval) are defined in later phases and added
-to this contract through Agent 1 coordination.
+Additional endpoints (question, retrieval, citations) are defined in later milestones and added to
+this contract through Agent 1 coordination.
+
+## Milestone 1 — Document Management
+
+Implemented by Agent 2. These endpoints are live and tested; Agent 3 should build the frontend
+against exactly this behaviour. The response models below are the single source of truth for the
+JSON shapes (defined in `src/enterprise_ai_document_assistant/services/documents/models.py`).
+
+### Models
+
+**`DocumentStatus`** (enum): `"processed"` | `"error"`.
+
+**`DocumentMetadata`**:
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | string | Stable unique identifier (UUIDv4). |
+| `filename` | string | Original uploaded filename, sanitized. |
+| `status` | `"processed"` \| `"error"` | Processing status. |
+| `page_count` | int \| null | Page count when extraction succeeded; `null` otherwise. |
+| `created_at` | string (ISO-8601 UTC) | Upload timestamp. |
+| `error` | string \| null | Human-readable reason when `status` is `"error"`; `null` otherwise. |
+
+**`DocumentListResponse`**:
+| Field | Type | Notes |
+| --- | --- | --- |
+| `documents` | `DocumentMetadata[]` | All stored documents, most recent first. |
+
+### Endpoints
+
+#### `POST /documents` — upload and process one PDF
+- **Request:** `multipart/form-data` with a single file field named **`file`**.
+- **Success:** `201 Created` → `DocumentMetadata`.
+- **Errors:**
+  - `400 Bad Request` for invalid uploads: empty file, non-PDF (missing `%PDF` header), or size
+    above the limit (`max_upload_bytes`, default 25 MiB). Body: `{"detail": "<reason>"}`.
+  - Encrypted or malformed PDFs are **not** rejected: they are accepted and stored as a document
+    with `status: "error"` and an `error` reason (returned as `201`).
+
+#### `GET /documents` — list documents
+- **Success:** `200 OK` → `DocumentListResponse` (`{"documents": [...]}`, most recent first).
+
+#### `GET /documents/{document_id}` — get one document
+- **Success:** `200 OK` → `DocumentMetadata`.
+- **Errors:**
+  - `404 Not Found` for an unknown id. Body: `{"detail": "<reason>"}`.
+
+### Error format
+
+All error responses use FastAPI's standard shape: `{"detail": "<human-readable message>"}` with the
+appropriate HTTP status code. No secrets or file contents are included in errors.
+
+### Frontend notes (Agent 3)
+- Send uploads as multipart with the field name `file` (e.g. `requests.post(f"{API_BASE_URL}/documents", files={"file": fh})`).
+- Poll/list via `GET /documents`; fetch one via `GET /documents/{id}`.
+- A document with `status: "error"` was uploaded successfully but could not be processed — surface
+  its `error` reason to the user rather than treating it as a failed request.
 
 ## Frontend (Streamlit)
 

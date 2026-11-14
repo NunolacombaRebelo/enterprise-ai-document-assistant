@@ -55,6 +55,13 @@ class Settings(BaseSettings):
     # --- Future vector storage (Phase 2+) ---------------------------------
     vector_store_path: str = ".data/vector-store"
 
+    # --- Document storage (Milestone 1) -----------------------------------
+    # Local development persistence for uploaded documents and their metadata.
+    # Relative path, runtime data only (git-ignored). Never committed.
+    documents_dir: str = ".data/documents"
+    # Maximum accepted upload size in bytes (default 25 MiB). Enforced before processing.
+    max_upload_bytes: int = 25 * 1024 * 1024
+
 
 @lru_cache
 def get_settings() -> Settings:
