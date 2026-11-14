@@ -1,0 +1,61 @@
+# Enterprise AI Document Assistant — Docker Compose
+#
+# Two services: the FastAPI backend (api) and the Streamlit frontend (frontend).
+# - Relative build contexts (the repository root).
+# - Configurable host ports via environment variables (defaults: api 8000, frontend 8501).
+# - Internal service networking: frontend reaches backend as http://api:8000.
+# - Local-only exposure by default (bound to host ports; no external DBs/brokers).
+# - No hardcoded credentials, no privileged containers.
+#
+# Future ChromaDB persistence (Phase 2) will be handled with a named volume mounted at
+# /app/.data/vector-store on the api service; see docs/architecture/overview.md. It is NOT
+# introduced in Phase 0.
+
+name: enterprise-ai-document-assistant
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    image: enterprise-ai-document-assistant-api:0.1.0
+    container_name: eaida-api
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      API_HOST: 0.0.0.0
+      API_PORT: "8000"
+      # Internal URL used by anything inside the compose network.
+      API_BASE_URL: http://api:8000
+    ports:
+      - "${API_PORT:-8000}:8000"
+    # Named volume for future vector-store persistence (Phase 2). Created now so the path exists.
+    volumes:
+      - vector-data:/app/.data
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    image: enterprise-ai-document-assistant-frontend:0.1.0
+    container_name: eaida-frontend
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Frontend talks to the backend over the internal service name.
+      API_BASE_URL: http://api:8000
+    ports:
+      - "${FRONTEND_PORT:-8501}:8501"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  vector-data:

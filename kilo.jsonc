@@ -1,0 +1,17 @@
+{
+  "$schema": "https://app.kilo.ai/config.json",
+  // Project-level Kilo configuration.
+  //
+  // Loads the modular development rules from .kilo/rules/. The root AGENTS.md is
+  // loaded automatically by Kilo (it is write-protected). These rules complement,
+  // not duplicate, AGENTS.md: AGENTS.md holds the project overview and the
+  // multi-agent ownership protocol; the rules hold the actionable per-category
+  // guardrails.
+  "instructions": [
+    ".kilo/rules/development-workflow.md",
+    ".kilo/rules/architecture-code-quality.md",
+    ".kilo/rules/security-portability.md",
+    ".kilo/rules/testing-validation.md",
+    ".kilo/rules/multi-agent-coordination.md"
+  ]
+}

@@ -1,0 +1,51 @@
+# Build context is the repository root (see compose.yaml build context).
+# Keep images small and reproducible; exclude everything that is not needed
+# to build the api or frontend services.
+
+# --- VCS / local state -----------------------------------------------------
+.git/
+.gitignore
+.github/
+
+# --- Python / uv (reinstalled from uv.lock inside the image) ---------------
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# --- Environment / secrets (NEVER bake into images) ------------------------
+.env
+.env.*
+*.pem
+*.key
+
+# --- Runtime data (mounted as a volume, not baked in) ----------------------
+.data/
+data/
+chroma/
+vector-store/
+uploads/
+documents/
+*.pdf
+*.docx
+
+# --- Tests, docs, agent config (not needed in runtime images) --------------
+# NOTE: README.md is intentionally NOT excluded — the Dockerfiles copy it because
+# pyproject.toml declares it as the package readme and uv needs it to build.
+tests/
+docs/
+.kilo/
+.kilocode/
+AGENTS.md
+kilo.jsonc
+
+# --- Editors / OS ----------------------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
