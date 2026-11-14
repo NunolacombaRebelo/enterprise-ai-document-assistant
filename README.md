@@ -107,10 +107,17 @@ uv sync --locked
 uv run uvicorn enterprise_ai_document_assistant.api.main:app --host 127.0.0.1 --port 8000
 ```
 
-Then open the frontend:
+Then open the frontend. The frontend imports itself as a package (`frontend.*`), so set
+`PYTHONPATH` to the repository root (Streamlit only adds the script's own directory to `sys.path`):
 
 ```bash
-uv run streamlit run frontend/app.py
+# Linux / macOS
+PYTHONPATH="$(pwd)" uv run streamlit run frontend/app.py
+```
+
+```powershell
+# Windows PowerShell
+$env:PYTHONPATH = (Get-Location).Path; uv run streamlit run frontend/app.py
 ```
 
 Health check: `curl http://localhost:8000/health` → `{"status":"ok"}`.

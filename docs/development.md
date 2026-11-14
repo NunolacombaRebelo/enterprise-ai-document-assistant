@@ -48,10 +48,18 @@ Start the backend:
 uv run uvicorn enterprise_ai_document_assistant.api.main:app --host 127.0.0.1 --port 8000
 ```
 
-In a second terminal, start the frontend:
+In a second terminal, start the frontend. The frontend imports itself as a package (`frontend.*`),
+so the **repository root must be on `PYTHONPATH`** — Streamlit only adds the script's own directory
+(`frontend/`) to `sys.path`, not the repo root. Run from the repository root with `PYTHONPATH` set:
 
 ```bash
-uv run streamlit run frontend/app.py
+# Linux / macOS
+PYTHONPATH="$(pwd)" uv run streamlit run frontend/app.py
+```
+
+```powershell
+# Windows PowerShell
+$env:PYTHONPATH = (Get-Location).Path; uv run streamlit run frontend/app.py
 ```
 
 Open http://localhost:8501. Health check: `curl http://localhost:8000/health` → `{"status":"ok"}`.
@@ -106,6 +114,8 @@ uv run ruff format .
 | Port already in use | Another process on 8000/8501 | Change `API_PORT` / `FRONTEND_PORT`, or stop the other process. |
 | Frontend can't reach backend | `API_BASE_URL` wrong | Native: `http://localhost:8000`; Docker: `http://api:8000`. |
 | `uv sync --locked` fails on lock mismatch | `pyproject.toml` changed without re-locking | Agent 1 runs `uv lock`; others do not edit deps. |
+| `ModuleNotFoundError: No module named 'frontend'` (native) | Repo root not on `PYTHONPATH` when running `streamlit run frontend/app.py` | Set `PYTHONPATH` to the repo root before launching (see "Local development"). |
+| `ModuleNotFoundError: No module named 'frontend'` (Docker) | Frontend image missing the launcher / `PYTHONPATH=/app` | Rebuild: `docker compose build frontend`. The image uses `docker/frontend-launch.sh` + `PYTHONPATH=/app`. |
 | Streamlit deprecation warning about `httpx2` | Benign upstream notice | Safe to ignore in Phase 0. |
 
 ## Clean-machine restoration

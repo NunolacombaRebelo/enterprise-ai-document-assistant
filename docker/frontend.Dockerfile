@@ -10,7 +10,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     STREAMLIT_SERVER_HEADLESS=true \
     STREAMLIT_SERVER_ADDRESS=0.0.0.0 \
     STREAMLIT_SERVER_PORT=8501 \
-    UV_NO_SYNC=1
+    UV_NO_SYNC=1 \
+    PYTHONPATH=/app
 
 WORKDIR /app
 
@@ -23,6 +24,10 @@ COPY src ./src
 COPY frontend ./frontend
 RUN uv sync --frozen --no-dev
 
+# Launcher (copied while still root so chmod is permitted; see note in the script).
+COPY docker/frontend-launch.sh /usr/local/bin/frontend-launch.sh
+RUN chmod +x /usr/local/bin/frontend-launch.sh
+
 # Drop privileges.
 RUN useradd --create-home --uid 1000 appuser
 USER appuser
@@ -32,4 +37,4 @@ EXPOSE 8501
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=4).status==200 else 1)"]
 
-CMD ["/app/.venv/bin/streamlit", "run", "frontend/app.py"]
+CMD ["/usr/local/bin/frontend-launch.sh"]

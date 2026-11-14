@@ -13,6 +13,24 @@ part of this milestone.
 
 ## Coordination log
 
+### 2026-11-14 — Frontend `ModuleNotFoundError: No module named 'frontend'` (Docker + native)
+**Root cause:** the frontend imports itself as a package (`from frontend.api.client import ...`), but
+Streamlit adds only the *script's* directory (`frontend/`) to `sys.path`, not the repository root. So
+`import frontend` fails both in the Docker image (WORKDIR `/app`, script at `/app/frontend/app.py`)
+and when running `uv run streamlit run frontend/app.py` natively from the repo root. The tests passed
+only because `tests/frontend/conftest.py` inserts the repo root into `sys.path`.
+**Fix (Platform-owned, no Agent 3 source changes):**
+- Added `docker/frontend-launch.sh` — a launcher that `cd /app` and runs `/app/.venv/bin/streamlit run
+  frontend/app.py`; combined with `PYTHONPATH=/app` this makes `frontend` importable.
+- `docker/frontend.Dockerfile`: set `PYTHONPATH=/app`, copy+chmod the launcher while still root, and
+  use it as `CMD`.
+- Documented the native equivalent in `README.md` and `docs/development.md`: set `PYTHONPATH` to the
+  repo root before `streamlit run frontend/app.py`.
+**Validation:** rebuilt the frontend image; container healthy; AppTest render inside the container =
+0 exceptions, title rendered, "Backend connected"; frontend→backend over internal net OK; healthcheck
+negative test confirms it reports `unhealthy` when Streamlit is not serving. Native launch verified on
+Windows with `PYTHONPATH` set. `ruff check` / `ruff format --check` / `pytest` (87) all pass.
+
 ### 2026-11-14 — Milestone 1 final integration (Agent 1)
 Two integration defects were found during end-to-end validation and fixed within Agent 1 ownership:
 - **`httpx` was a dev-only dependency but the frontend client imports it at runtime.** A production
