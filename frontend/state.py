@@ -18,6 +18,9 @@ KEY_UPLOAD_RESULT = "upload_result"
 KEY_BACKEND_AVAILABLE = "backend_available"
 KEY_BACKEND_CHECKED = "backend_checked"
 KEY_ACTIVE_PAGE = "active_page"
+KEY_SEARCH = "doc_search"
+KEY_SORT = "doc_sort"
+KEY_FILTER = "doc_filter"
 
 
 def init_state() -> None:
@@ -34,6 +37,12 @@ def init_state() -> None:
         st.session_state[KEY_BACKEND_CHECKED] = False
     if KEY_ACTIVE_PAGE not in st.session_state:
         st.session_state[KEY_ACTIVE_PAGE] = "documents"
+    if KEY_SEARCH not in st.session_state:
+        st.session_state[KEY_SEARCH] = ""
+    if KEY_SORT not in st.session_state:
+        st.session_state[KEY_SORT] = "newest"
+    if KEY_FILTER not in st.session_state:
+        st.session_state[KEY_FILTER] = "all"
 
 
 def get(key: str, default: Any = None) -> Any:

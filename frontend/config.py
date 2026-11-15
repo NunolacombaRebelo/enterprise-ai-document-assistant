@@ -16,7 +16,9 @@ DEFAULT_API_BASE_URL = "http://localhost:8000"
 
 # Application identity.
 APP_TITLE = "Enterprise AI Document Assistant"
+APP_SHORT_NAME = "Aurora"
 APP_ICON = ":file_cabinet:"
+APP_TAGLINE = "Document intelligence for small businesses"
 APP_DESCRIPTION = "Upload PDF documents, manage your collection, and ask grounded questions."
 
 # Upload limits. The backend is the source of truth for what it accepts; these values are used for

@@ -12,7 +12,16 @@ import pytest
 from enterprise_ai_document_assistant.core.config import Settings
 
 
-def test_settings_defaults_start_without_credentials() -> None:
+def test_settings_defaults_start_without_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("APP_ENV", raising=False)
+    monkeypatch.delenv("LOG_LEVEL", raising=False)
+    monkeypatch.delenv("API_PORT", raising=False)
+    monkeypatch.delenv("FRONTEND_PORT", raising=False)
+    monkeypatch.delenv("API_BASE_URL", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
     settings = Settings(_env_file=None)
 
     assert settings.app_env == "development"

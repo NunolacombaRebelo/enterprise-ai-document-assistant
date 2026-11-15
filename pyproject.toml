@@ -12,6 +12,11 @@ dependencies = [
     "pypdf>=4",
     # Runtime HTTP client used by the Streamlit frontend (frontend/api/client.py).
     "httpx>=0.27",
+    # Milestone 2 — RAG infrastructure.
+    # Persistent embedded vector store (local dir, volume-backed in Docker). No external service.
+    "chromadb>=1.0",
+    # Pure-Python BM25 lexical retrieval for hybrid search. No native build.
+    "rank-bm25>=0.2",
 ]
 
 [dependency-groups]
@@ -26,6 +31,19 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/enterprise_ai_document_assistant"]
+
+# ---------------------------------------------------------------------------
+# uv — dependency constraints (applied at resolve time, not a direct dependency)
+# ---------------------------------------------------------------------------
+# chromadb pulls huggingface-hub, whose 2.x line depends on `httpx2`. Starlette's
+# TestClient (used by FastAPI/pytest) prefers `httpx2` over `httpx` when both are
+# importable, which breaks the frontend's real-`httpx` client in tests (a stream-type
+# mismatch). Pinning huggingface-hub to the 0.x line removes httpx2 from the env while
+# keeping chromadb fully functional. This is a transitive constraint, not a new dep.
+[tool.uv]
+constraint-dependencies = [
+    "huggingface-hub<1",
+]
 
 # ---------------------------------------------------------------------------
 # Ruff — linting and formatting (single source of truth; CI runs both)

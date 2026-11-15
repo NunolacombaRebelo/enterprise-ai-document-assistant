@@ -7,9 +7,10 @@
 # - Local-only exposure by default (bound to host ports; no external DBs/brokers).
 # - No hardcoded credentials, no privileged containers.
 #
-# Future ChromaDB persistence (Phase 2) will be handled with a named volume mounted at
-# /app/.data/vector-store on the api service; see docs/architecture/overview.md. It is NOT
-# introduced in Phase 0.
+# ChromaDB (Milestone 2) runs EMBEDDED in the api service and persists to /app/.data/vector-store,
+# which is backed by the named volume `vector-data` mounted at /app/.data. The same volume also
+# holds Milestone 1 document storage (/app/.data/documents). See docs/architecture/overview.md and
+# ADR 0007. No external ChromaDB service is required.
 
 name: enterprise-ai-document-assistant
 
@@ -32,7 +33,8 @@ services:
       API_BASE_URL: http://api:8000
     ports:
       - "${API_PORT:-8000}:8000"
-    # Named volume for future vector-store persistence (Phase 2). Created now so the path exists.
+    # Named volume backing /app/.data: holds Milestone 1 document storage and the Milestone 2
+    # embedded ChromaDB vector store (.data/vector-store). Survives `docker compose down`.
     volumes:
       - vector-data:/app/.data
     restart: unless-stopped

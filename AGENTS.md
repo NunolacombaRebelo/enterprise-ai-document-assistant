@@ -9,13 +9,17 @@ guardrails; this file holds the project overview, architecture, and the multi-ag
 
 An independent, professional AI-engineering portfolio project. It lets small businesses:
 
+**Implemented (Milestones 1–2):**
 - Upload PDF documents.
-- Extract and process document content.
-- Generate embeddings and index documents.
-- Ask natural-language questions.
-- Retrieve relevant document passages.
-- Generate grounded answers with source citations.
+- Extract and process document content (per-page text).
+- Chunk documents and index them for lexical (BM25) search.
+- Retrieve relevant document passages (lexical retrieval, with source citations derived from chunk
+  metadata).
 - Interact through a professional web interface.
+
+**Planned (Milestones 3+):**
+- Generate real embeddings and enable vector / hybrid semantic retrieval.
+- Ask natural-language questions and generate grounded answers with an LLM.
 
 It uses only original, public, or synthetic demonstration content. No proprietary company code or
 configuration is used.
@@ -27,17 +31,19 @@ configuration is used.
 | Language | Python 3.12 | managed by `uv` |
 | Backend | FastAPI | `src/enterprise_ai_document_assistant/api/main.py` → `app` |
 | Frontend | Streamlit | `frontend/app.py` entrypoint |
-| RAG orchestration | LangChain | **future** (Phase 3), not installed in Phase 0 |
-| Vector storage | ChromaDB | **future** (Phase 2), not installed in Phase 0 |
-| LLM | OpenAI-compatible APIs | **future** (Phase 3), not required to start |
+| RAG orchestration | LangChain | **future** (Milestone 3+), not installed |
+| Vector storage | ChromaDB | **implemented** (Milestone 2, embedded); lexical-only until real embeddings land |
+| Lexical retrieval | rank-bm25 | **implemented** (Milestone 2) |
+| LLM | OpenAI-compatible APIs | **future** (Milestone 3+), not required to start |
 | Dependency management | uv | `uv.lock` is generated; never hand-edit |
 | Packaging / orchestration | Docker + Docker Compose | `compose.yaml`, `docker/` |
 | Testing | pytest | `tests/` |
 | Linting / formatting | Ruff | configured in `pyproject.toml` |
 | CI | Git + GitHub Actions | `.github/workflows/ci.yml` |
 
-Prefer a **modular monolith** over microservices. Do not install LangChain, ChromaDB, or
-LLM-specific dependencies during Phase 0 unless strictly necessary.
+Prefer a **modular monolith** over microservices. Do not install LangChain or LLM-specific
+dependencies during Milestone 2 unless strictly necessary (ChromaDB and rank-bm25 are already in use
+for the lexical retrieval infrastructure).
 
 ## Architecture boundaries
 
@@ -48,7 +54,7 @@ the backend over HTTP only (`API_BASE_URL`). No shared in-process state between 
 src/enterprise_ai_document_assistant/
 ├─ api/        # FastAPI app + endpoints          (Agent 2)  main.py holds `app`
 ├─ core/       # shared configuration/utilities   (Agent 1 owns config)
-├─ services/   # ingestion, extraction, chunking, embedding, retrieval (Agent 2, future)
+├─ services/   # ingestion, extraction, chunking, embedding, retrieval (Agent 2; documents + retrieval implemented)
 ├─ rag/        # RAG orchestration                (Agent 2, future)
 └─ providers/  # LLM / embedding / vector-store abstractions (Agent 2, future)
 frontend/      # Streamlit app                    (Agent 3)
@@ -138,7 +144,7 @@ needed) are in `.kilo/rules/multi-agent-coordination.md`.
 - Add meaningful tests for new logic in the correct owned directory.
 - Tests must not require paid APIs, external credentials, or network access.
 - No fake passing tests. Never bypass a failing test to go green.
-- Phase 0 has only minimal infrastructure/config tests; full suites belong to Agents 2 and 3.
+- The suite spans backend (Agent 2), frontend (Agent 3), and integration (Agent 1) tests.
 
 ## Security requirements
 

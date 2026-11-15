@@ -5,7 +5,8 @@ Guardrails for the modular monolith. The architecture rationale lives in
 
 ## Architecture boundaries
 - **Modular monolith** — one Python package, one FastAPI app, one Streamlit frontend. No
-  microservices, no message brokers, no external databases in Phase 0–2.
+  microservices, no message brokers, no external databases. The vector store is embedded (ChromaDB,
+  Milestone 2), not an external service.
 - Package layout (`src/enterprise_ai_document_assistant/`):
   - `api/` — FastAPI app + endpoints (Agent 2). `main.py` holds the `app` object.
   - `core/` — shared configuration/utilities (Agent 1 owns config; Agent 2 may add shared core
@@ -30,7 +31,8 @@ Guardrails for the modular monolith. The architecture rationale lives in
 - No dead code, no commented-out blocks, no TODO-only stubs that claim to be implemented.
 
 ## Dependency discipline
-- No unnecessary dependencies. Do not add LangChain / ChromaDB / OpenAI SDKs until their phase
-  begins (see `docs/roadmap.md`).
+- No unnecessary dependencies. `chromadb` and `rank-bm25` are in use for Milestone 2 (lexical
+  retrieval infrastructure). Do not add LangChain or OpenAI SDKs until Milestone 3 begins (see
+  `docs/roadmap.md`).
 - Only Agent 1 modifies `pyproject.toml` and `uv.lock`. Others request changes via
   `docs/contracts/ownership.md`.

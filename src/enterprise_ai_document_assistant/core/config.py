@@ -48,12 +48,43 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4o-mini"
     openai_api_key: str | None = None  # optional; never logged
 
-    # --- Future embedding provider (Phase 2+) -----------------------------
+    # --- Embedding provider (Milestone 3+; interface only in Milestone 2) --
+    # Configured but NOT required to start. A missing/empty provider means the system runs in
+    # lexical-only mode; it must never block upload, chunking, lexical indexing, or search.
+    # The endpoint/key are optional and are NEVER logged. No model is downloaded or called in
+    # Milestone 2 — embeddings are injected externally in a later milestone.
     embedding_provider: str = "openai"
     embedding_model: str = "text-embedding-3-small"
+    # Optional OpenAI-compatible base URL + key for embeddings. Empty by default. Never logged.
+    embedding_base_url: str | None = None
+    embedding_api_key: str | None = None
 
-    # --- Future vector storage (Phase 2+) ---------------------------------
+    # --- Vector storage (Milestone 2): embedded ChromaDB ------------------
+    # Persistent local directory for the embedded ChromaDB client. Relative path, runtime data
+    # only (git-ignored), volume-backed at /app/.data/vector-store inside Docker. No external
+    # service is required. See docs/architecture/overview.md and ADR 0007.
     vector_store_path: str = ".data/vector-store"
+    # Name of the Chroma collection that holds document chunks.
+    chroma_collection: str = "documents"
+    # Distance function for vector similarity. cosine is the default for text embeddings.
+    chroma_distance_fn: str = "cosine"
+
+    # --- Retrieval (Milestone 2) ------------------------------------------
+    # Retrieval mode: "lexical" (BM25 only — always available, no embeddings needed),
+    # "vector" (Chroma similarity only — requires embeddings to be present), or
+    # "hybrid" (BM25 + vector fused with Reciprocal Rank Fusion). The app must start and serve
+    # lexical search even when no embedding provider is configured.
+    retrieval_mode: str = "lexical"  # lexical | vector | hybrid
+    # Reciprocal Rank Fusion constant (standard default 60). Only used in hybrid mode.
+    rrf_k: int = 60
+    # Number of candidates each retriever returns before fusion/reranking.
+    retrieval_top_k: int = 10
+    # Optional reranking of the fused candidate list. Disabled by default; enabled later when a
+    # reranker is configured. Must not require a real model in Milestone 2.
+    rerank_enabled: bool = False
+    # Chunking parameters for structure-aware chunking (used by Agent 2's chunker).
+    chunk_size_tokens: int = 400  # target tokens per chunk (approximate; Agent 2 may refine)
+    chunk_overlap_tokens: int = 60  # overlap between consecutive chunks
 
     # --- Document storage (Milestone 1) -----------------------------------
     # Local development persistence for uploaded documents and their metadata.

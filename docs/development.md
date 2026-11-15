@@ -88,8 +88,9 @@ docker compose down
 Host ports are configurable via environment variables (`API_PORT`, `FRONTEND_PORT`), e.g.
 `API_PORT=9000 FRONTEND_PORT=9501 docker compose up --build`.
 
-The future vector store is persisted on the named volume `vector-data` (mounted at `/app/.data`), so
-it survives `docker compose down` (use `docker compose down -v` to also delete it).
+The vector store (Milestone 2, embedded ChromaDB) and document storage are persisted on the named
+volume `vector-data` (mounted at `/app/.data`), so they survive `docker compose down` (use
+`docker compose down -v` to also delete them). Locally this is `.data/` (git-ignored). See ADR 0007.
 
 ## Testing and linting
 
@@ -116,7 +117,8 @@ uv run ruff format .
 | `uv sync --locked` fails on lock mismatch | `pyproject.toml` changed without re-locking | Agent 1 runs `uv lock`; others do not edit deps. |
 | `ModuleNotFoundError: No module named 'frontend'` (native) | Repo root not on `PYTHONPATH` when running `streamlit run frontend/app.py` | Set `PYTHONPATH` to the repo root before launching (see "Local development"). |
 | `ModuleNotFoundError: No module named 'frontend'` (Docker) | Frontend image missing the launcher / `PYTHONPATH=/app` | Rebuild: `docker compose build frontend`. The image uses `docker/frontend-launch.sh` + `PYTHONPATH=/app`. |
-| Streamlit deprecation warning about `httpx2` | Benign upstream notice | Safe to ignore in Phase 0. |
+| Starlette TestClient import error mentioning `httpx2` | `chromadb → huggingface-hub 2.x → httpx2` shadowing `httpx` | Resolved by the `[tool.uv] constraint-dependencies = ["huggingface-hub<1"]` in `pyproject.toml`. If it reappears, confirm the constraint is present and re-run `uv lock` + `uv sync --locked`. |
+| Search returns no results / only lexical matches | Running in lexical-only mode (no embedding provider configured) | Expected in Milestone 2. Set an embedding endpoint/key and switch `RETRIEVAL_MODE` to `vector`/`hybrid` in Milestone 3. |
 
 ## Clean-machine restoration
 
@@ -145,8 +147,9 @@ No global Python packages, no manual venv creation, and no machine-specific path
 **Dependencies to reinstall:** run `uv sync --locked` on the destination machine. Do not copy
 `.venv/` between machines (it is machine-specific).
 
-**Environment variables to configure:** none required in Phase 0. For later phases, copy
-`.env.example` to `.env` and set `OPENAI_API_KEY` and model/provider values as needed.
+**Environment variables to configure:** none required to start (Milestone 0–2). The app runs in
+lexical-only mode with no credentials. For Milestone 3+, copy `.env.example` to `.env` and set
+`OPENAI_API_KEY`, `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY`, and `RETRIEVAL_MODE` as needed.
 
 **Docker rebuilding:** run `docker compose up --build` on the destination to rebuild images from the
 Dockerfiles (do not copy built images or volumes).

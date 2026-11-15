@@ -1,7 +1,11 @@
-"""Application layout: page config, sidebar navigation, and the backend-connection banner.
+"""Application layout: page config, branded sidebar chrome, and the offline banner.
 
-These helpers compose the consistent visual structure shared by every page. They contain no
-business logic; they only render and delegate to the API client / state helpers.
+Navigation is handled by a single native ``st.navigation`` (see ``app.py``). This module renders
+the non-navigation parts of the application shell: the page config + theme injection, the branded
+logo/tagline, the backend-connection status pill, and the offline banner. It contains no business
+logic.
+
+Owned by Agent 3 (Frontend Engineering).
 """
 
 from __future__ import annotations
@@ -14,58 +18,54 @@ from frontend.api.client import (
     RequestTimeoutError,
 )
 
-from frontend import config, state
-
-NAV_DOCUMENTS = "Documents"
-NAV_ASK = "Ask"
+from frontend import config, state, theme
 
 
 def setup_page() -> None:
-    """Configure the Streamlit page (title, icon, layout)."""
+    """Configure the Streamlit page (title, icon, layout) and inject the theme.
+
+    The theme is injected on every rerun (not gated by a session flag) so the Aurora styling is
+    guaranteed to be present on every page and after every navigation transition. Re-emitting the
+    same ``<style>`` block is cheap and idempotent.
+    """
     st.set_page_config(
         page_title=config.APP_TITLE,
         page_icon=config.APP_ICON,
         layout="wide",
         initial_sidebar_state="expanded",
     )
+    theme.inject_theme()
 
 
-def render_sidebar(client: DocumentAPIClient) -> str:
-    """Render the sidebar navigation and return the selected page key.
+def render_sidebar_chrome() -> None:
+    """Render the branded sidebar chrome (logo, tagline, backend status).
 
-    The "Ask" item is present for future navigation but is clearly marked as not yet available; it
-    does not pretend to provide working AI functionality.
+    This is called from each page body so the branded header and status pill appear above the
+    native navigation on every page. The navigation itself is rendered by ``st.navigation``.
     """
     with st.sidebar:
-        st.title(f"{config.APP_ICON} {config.APP_TITLE}")
-        st.caption(config.APP_DESCRIPTION)
-        st.divider()
-
-        page = st.radio(
-            "Navigation",
-            options=[NAV_DOCUMENTS, NAV_ASK],
-            index=0,
-            label_visibility="collapsed",
+        theme.brand_header()
+        st.markdown(
+            f'<div class="aurora-brand-sub" style="padding:0 8px 12px;">{config.APP_TAGLINE}</div>',
+            unsafe_allow_html=True,
         )
-        if page == NAV_ASK:
-            st.caption("Coming in a future milestone.")
-
-        st.divider()
-        _render_backend_status(client)
-
-    state.set_value(state.KEY_ACTIVE_PAGE, page)
-    return page
+        st.markdown("<hr>", unsafe_allow_html=True)
+        _render_backend_status()
 
 
-def _render_backend_status(client: DocumentAPIClient) -> None:
-    """Show a concise backend connection indicator in the sidebar."""
+def _render_backend_status() -> None:
+    """Show the backend connection status pill in the sidebar.
+
+    Three honest states: Connected (verified), Disconnected (verified), and Checking (not yet
+    verified). A status that has not been verified is never shown as connected.
+    """
     available = state.get(state.KEY_BACKEND_AVAILABLE)
     if available is True:
-        st.success("Backend connected", icon="✅")
+        theme.status_pill(True, sub=config.get_api_base_url())
     elif available is False:
-        st.error("Backend offline", icon="⚠️")
+        theme.status_pill(False, sub="unreachable")
     else:
-        st.caption("Checking backend…")
+        theme.status_pill_checking()
 
 
 def check_backend(client: DocumentAPIClient) -> None:

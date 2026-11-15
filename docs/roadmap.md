@@ -26,20 +26,44 @@ agents can begin work without restructuring the repository.
 **Exit criteria:** upload/processing/listing/inspection operational end-to-end (native + Docker);
 contract matches implementation; automated checks pass; runtime documents stay out of version control.
 
-## Phase 2 — Chunking and vector storage
-- Text chunking service.
-- Embedding generation (provider abstraction).
-- ChromaDB vector storage with persistence (named volume in Docker).
-- *(Agent 2. Adds LangChain/ChromaDB dependencies via Agent 1 coordination.)*
+## Phase 2 / Milestone 2 — Advanced RAG infrastructure *(platform + backend complete; frontend search UI pending)*
 
-## Phase 3 — Retrieval and LLM integration
-- Retrieval of relevant passages.
-- RAG orchestration with an OpenAI-compatible LLM.
-- Grounded answer generation.
-- *(Agent 2. Adds LLM provider via Agent 1 coordination.)*
+**Platform & contracts (Agent 1, complete):**
+- Dependencies: `chromadb` (embedded) + `rank-bm25`; `huggingface-hub<1` constraint to keep Starlette
+  TestClient working (no `httpx2`). See ADR 0007.
+- `core/config.py`: Chroma + retrieval settings (`vector_store_path`, `chroma_collection`,
+  `retrieval_mode`, `rrf_k`, `retrieval_top_k`, `rerank_enabled`, chunk sizing, embedding endpoint/key).
+- Contracts: `docs/contracts/retrieval.md` (chunk/metadata/index/BM25/vector/hybrid-RRF/rerank/
+  citation/lifecycle) and Milestone 2 endpoints in `docs/contracts/api.md`.
+- ADRs 0007 (embedded ChromaDB) and 0008 (hybrid retrieval / RRF / provider abstraction).
+- Deterministic integration tests for Chroma init/persistence/collection lifecycle, metadata
+  contract, RRF math, BM25 determinism, and the no-provider lexical-only guarantee.
+- **No real model endpoints or API keys.** The system runs in lexical-only mode by default.
 
-## Phase 4 — Citations and frontend improvements
-- Source citations attached to answers.
+**Backend implementation (Agent 2, complete):** structure-aware chunking, BM25 index, embedded-Chroma
+vector store (zero-vector placeholder; prepared for real embeddings), chunk persistence, hybrid
+retriever with graceful degradation, and the `/documents/{id}/index`, `/index/status`, `/search`
+endpoints — all functional and tested. Embeddings are interface-only here; a concrete provider is
+added in Milestone 3. See `docs/backend.md`.
+
+**Frontend implementation (Agent 3, pending):** index/status UI and a search panel consuming
+`POST /search`, rendering results with filename/page/score and metadata-derived citations. The
+"Ask" page is currently a clearly-identified placeholder; the frontend does not yet call the
+Milestone 2 endpoints.
+
+**Exit criteria:** lexical-only search works end-to-end (native + Docker) with no credentials;
+contract matches implementation; automated checks pass; no vector data committed. Backend exit
+criteria are met; the frontend search UI remains the open item.
+
+## Phase 3 / Milestone 3 — Retrieval quality and LLM integration
+- Concrete OpenAI-compatible **embedding provider** wired against `embedding_base_url` /
+  `embedding_api_key`; real vectors upserted over placeholders (ADR 0008).
+- Vector + hybrid retrieval now active; optional reranking.
+- RAG orchestration with an OpenAI-compatible LLM; grounded answer generation.
+- *(Agent 2. Adds LLM/embedding provider via Agent 1 coordination.)*
+
+## Phase 4 / Milestone 4 — Citations and frontend improvements
+- Source citations attached to generated answers (derived from chunk metadata).
 - Polished professional UI/UX.
 - *(Agent 2: citations; Agent 3: UI.)*
 
