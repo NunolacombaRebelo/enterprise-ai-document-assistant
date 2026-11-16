@@ -15,9 +15,12 @@ badges, loading/empty/success/error states).
 deterministic integration tests, Docker/data-isolation updates). Agent 2 implemented the backend
 (chunking, BM25, embedded-Chroma vector store, hybrid retriever, and the three Milestone 2 endpoints)
 against `docs/contracts/retrieval.md` — see `docs/handoffs/02-backend.md`. Agent 3 implemented the
-frontend search experience (index/status panel on the Documents page, functional BM25 search
-workspace on the Ask page) against `docs/contracts/api.md` — see `docs/handoffs/03-frontend.md`.
-The system runs in **lexical-only mode** with **no real model endpoints or API keys**.
+frontend search experience (functional BM25 search on the Ask page, auto-index on upload on the
+Documents page) against `docs/contracts/api.md` — see `docs/handoffs/03-frontend.md`. The Ask page
+was later refined into a **conversational** interface (chat composer + message history) while the
+Documents page was simplified (index panel removed, auto-index on upload) — see the 2026-11-16
+coordination log entry. The system runs in **lexical-only mode** with **no real model endpoints or
+API keys**.
 
 ## Coordination log
 
@@ -109,6 +112,46 @@ frontend) was performed and the repository was consolidated on `main`.
   tracked (106 files); no machine-specific absolute paths (`C:\Users\...`, `/home/...`) in any
   tracked file; `.dockerignore` correctly excludes runtime data and secrets.
 - **Commit:** consolidated commit on `main` (see below). No push performed.
+
+### 2026-11-16 — Frontend UX iteration integration (Agent 3 conversational Ask + simplified Documents)
+Agent 3 delivered a focused frontend refinement on top of the Milestone 2 search UI. Agent 1
+performed the integration review, functional validation, quality checks, Docker validation, and Git
+consolidation. **Scope verified: only Agent 3's owned files changed** (`frontend/`, `tests/frontend/`,
+`docs/frontend.md`, `docs/handoffs/03-frontend.md`) — no Agent 1/2 files touched.
+- **Changes reviewed (8 files, +512/−493):**
+  - `chat.py` — the Ask page is now a **conversational** interface: bottom-anchored `st.chat_input`
+    composer, message history held in session state (`KEY_CONVERSATION`), user/assistant/error
+    bubbles, ranked result cards with source citations, suggestion chips in the empty state.
+    Clearly labelled "BM25 · keyword retrieval" with a "semantic/AI answers arrive in a later
+    milestone" note — **no fabricated LLM answers** (a `generated_answer` slot is reserved for
+    Milestone 3 but never populated).
+  - `documents.py` — **simplified**: the technical search-index panel was removed; upload now
+    **auto-indexes** via `POST /documents/{id}/index` (called once, only when the upload is not an
+    error; indexing failure is non-fatal and surfaces a warning while the document stays uploaded).
+  - `state.py` — added `KEY_CONVERSATION` (+ init). `theme.py` — added chat-bubble / suggestion-chip /
+    result-card CSS; removed the now-unused `.aurora-index-status` and `.aurora-coming-soon` styles.
+  - Tests — `test_navigation_theme_upload.py` rewritten for the conversational Ask page (conversation
+    render, no-match state, error state) + `test_view_and_theme.py` updated CSS-class assertions.
+- **Quality gates (executed this machine, Windows):** `uv sync --locked` clean (103 packages);
+  `uv run ruff check .` **passed**; `uv run ruff format --check .` **passed** (92 files);
+  `uv run pytest` **223 passed** (106 backend, 103 frontend, 14 integration) in ~19s;
+  `docker compose config` **valid**.
+- **Docker (executed this machine, Windows):** the running `eaida-frontend` container predated the
+  change (no `_auto_index`/`KEY_CONVERSATION` present), so the frontend image was **rebuilt from the
+  current source** and the container recreated. Both `eaida-api` (host 18000) and `eaida-frontend`
+  (host 18501) are **healthy**; the new code is confirmed present inside the running container.
+  Unrelated containers (`ead-web`, `open-webui`, `hp_*`, `docker-*`) were not touched.
+- **End-to-end HTTP smoke test (Dockerized API, port 18000, synthetic PDF only):** `GET /health` →
+  `ok`; `POST /documents` (multipart) → `201 processed`, `page_count=1`; `POST /documents/{id}/index`
+  → `chunks_indexed=1`, `vectors_added=0`; `GET /index/status` → `vectors_present=false`,
+  `retrieval_mode=lexical`; `POST /search` "refund policy" → 1 ranked result, `sources=["bm25"]`,
+  correct citation (filename + page 1); no-match query → `results: []`, `citations: []` (no dummy
+  results). Frontend reachable on 18501 (HTTP 200).
+- **Security/portability:** no secrets/credentials in the diff; `.env` not tracked; `.data/`
+  git-ignored; no machine-specific absolute paths in the changed files; single worktree, single
+  branch (`main`).
+- **Commit:** `4523bbf` on `main` (8 files). **No push performed** — `main` is now 2 commits ahead of
+  `origin/main`.
 
 ### 2026-11-14 — Frontend `ModuleNotFoundError: No module named 'frontend'` (Docker + native)
 **Root cause:** the frontend imports itself as a package (`from frontend.api.client import ...`), but
@@ -287,9 +330,9 @@ Docker:
 - Keep `GET /health` working; it is part of the contract.
 
 ### Agent 3 (Frontend) starting points
-- **Milestone 3:** extend the Ask page to display grounded LLM answers alongside the retrieved
-  passages (clearly separated sections). The search workspace and result rendering are already
-  scaffolded (Milestone 2).
+- **Milestone 3:** extend the conversational Ask page to display grounded LLM answers alongside the
+  retrieved passages (clearly separated sections). The `chat.py` assistant message already reserves a
+  `generated_answer` slot for this; the result-card rendering is in place (Milestone 2).
 - Talk to the backend over HTTP using `API_BASE_URL` (native `http://localhost:8000`, Docker
   `http://api:8000`). Never import backend internals.
 - Frontend tests go in `tests/frontend/`.
