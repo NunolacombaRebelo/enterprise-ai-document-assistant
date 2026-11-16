@@ -1,16 +1,102 @@
 # Handoff — Agent 3 (Frontend Engineering)
 
 ## Current status
-**Milestone 2 (Document Search & Retrieval Experience) is implemented and validated.** The "Ask"
-page is now a **functional BM25 lexical-retrieval workspace** (no fake AI), the Documents page gained
-a **search-index panel** (status + idempotent per-document index action), and the UI received a
-focused **UX refinement** (wider responsive layout, larger typography, and a clear sidebar
-hierarchy: brand → navigation → status). All Milestone 1 functionality is preserved. The
-conversational / grounded-answer experience remains a clearly-labelled future area (Milestone 3+).
+**Milestone 2 (Document Search & Retrieval Experience) is implemented, validated, and refined.**
+The "Ask" page is now a **conversational BM25 document-search chat** (no fake AI), and the
+Documents page is **simplified to focus on the user's documents** — the technical "Search index"
+panel was removed and documents are **auto-indexed on upload**. All Milestone 1 functionality is
+preserved. The grounded-answer (LLM) experience remains a clearly-labelled future area
+(Milestone 3+).
 
-This handoff supersedes the Milestone 1 UI/UX-refinement notes below; both are retained for history.
+This handoff supersedes the earlier Milestone 2 and Milestone 1 notes below; all are retained for
+history.
 
-## Milestone 2 — Document Search & Retrieval Experience
+## Milestone 2 refinement — conversational UX + simplified Documents
+
+All changes are within Agent 3 ownership (`frontend/`, `tests/frontend/`). No backend, dependency,
+or infrastructure changes.
+
+### What changed
+1. **Documents page — removed the technical indexing controls.** The prominent "Search index"
+   panel (global index status, chunk counts, retrieval mode, per-document "Index document" button)
+   was removed from the visible page. The user no longer needs to understand BM25 / vector indexes
+   / chunking. The `index_document()` and `index_status()` client methods and the backend indexing
+   functionality are **preserved** — indexing is simply no longer a user-facing control.
+2. **Auto-index on upload (`frontend/components/documents.py`).** After a successful upload of a
+   processed document, the frontend calls `POST /documents/{id}/index` **once** so the document is
+   immediately searchable. This is safe and idempotent (the backend upserts by chunk id). An
+   indexing failure is **non-fatal**: the document stays uploaded and visible, with a warning that
+   it is not yet searchable. No uncontrolled indexing of the whole collection runs on rerun, and no
+   background processing or fake progress is invented.
+3. **Ask page — conversational interface (`frontend/components/chat.py`).** Replaced the search-form
+   layout with a chat UI:
+   - `st.chat_input` composer anchored at the bottom (Enter to submit).
+   - `st.chat_message` conversation area: user questions as right-aligned bubbles, retrieved
+     passages as assistant-side messages.
+   - Conversation held in **session state** (`KEY_CONVERSATION`, a list of message dicts) so history
+     persists across reruns in correct order with no duplicate submissions.
+   - Each assistant turn renders a results header ("N passages found for …") + ranked result cards
+     (rank, filename, page, score, expandable passage, source citation) from the real
+     `POST /search` response.
+   - Distinct states: polished empty state with example-query suggestion chips, "no matching
+     passages" (valid empty, not an error), and assistant-side error messages (offline / timeout /
+     422 / 5xx / unexpected body).
+   - **Future-LLM ready:** the message dict already supports an optional `generated_answer` field
+     that would render as a distinct block before the retrieved passages (Milestone 3), so adding a
+     generated answer does not require a UI rebuild.
+4. **Styling (`frontend/theme.py`).** Added `.aurora-bubble` / `.aurora-bubble-user` chat-bubble
+   styling, right-aligned user messages, and a comfortable reading width for assistant messages.
+   Removed the now-dead `.aurora-coming-soon`, `.aurora-feature-*`, and `.aurora-index-status` CSS.
+
+### Files modified (Agent 3 ownership only)
+- `frontend/components/chat.py` — rewritten as the conversational chat interface.
+- `frontend/components/documents.py` — removed the search-index panel; added `_auto_index()` on
+  upload.
+- `frontend/state.py` — added `KEY_CONVERSATION` for the chat message history.
+- `frontend/theme.py` — chat-bubble CSS; removed dead coming-soon / feature / index-status CSS.
+- `tests/frontend/test_navigation_theme_upload.py` — rewrote `TestAskPage` for the conversational
+  UI (chat_input, conversation order, no-match, error state).
+- `tests/frontend/test_view_and_theme.py` — updated CSS-class assertions (`.aurora-bubble-user`,
+  removed `.aurora-index-status`).
+- `docs/frontend.md` — updated for the conversational Ask page and simplified Documents page.
+
+No new dependencies. No shared, backend, or infrastructure files were modified.
+
+### Validation results (actually executed on this machine)
+- `uv run ruff check .` — passed (whole repo clean).
+- `uv run ruff format --check .` — passed (92 files already formatted).
+- `uv run pytest tests/frontend/` — **103 passed**.
+- `uv run pytest` (full repo: backend + frontend + integration) — **223 passed**.
+- **End-to-end (real backend, live HTTP on `127.0.0.1:8000`):** upload a 3-page PDF → `processed`;
+  auto-index → `chunks_indexed=3`, `vectors_added=0`; `POST /search` "Page 2" → ranked results,
+  top on page 2, citations present; no-match query → `results: []`.
+- **Streamlit `AppTest`:** the full app renders with **0 exceptions**; the Documents page shows no
+  "Search index" panel or "Index document" button; the Ask page renders the conversational UI
+  (mode indicator, `st.chat_input`, empty state, conversation messages, no-match, error state).
+
+### Known limitations
+- **Auto-indexing is frontend-triggered, not backend-managed.** Documents uploaded before this
+  change (or whose auto-index failed) are not automatically searchable until re-indexed. A reliable
+  **backend-managed** automatic index-on-upload (or a reindex-all recovery path) is the proper fix
+  and is requested from Agent 2 below.
+- The Ask page is **lexical (BM25) only**; grounded LLM answers are Milestone 3+. The UI is clearly
+  labelled "BM25 · keyword retrieval" and does not fabricate AI answers.
+- Document **deletion** is not exposed in the UI (no `DELETE /documents/{id}` endpoint).
+
+### Coordination request for Agent 2 (backend-managed auto-indexing)
+The frontend currently auto-indexes a document by calling `POST /documents/{id}/index` once after a
+successful upload. This works and is idempotent, but it is a frontend workaround. **Please
+consider making indexing automatic on the backend** (e.g. index a document as part of the upload /
+processing pipeline, or expose a reindex-all recovery endpoint) so that:
+- documents are reliably searchable without a frontend-triggered index call, and
+- previously-uploaded-but-unindexed documents can be recovered in bulk.
+
+This is a backend enhancement; the frontend will continue to work either way (it will simply no
+longer need to trigger indexing itself). No contract change is required for the current behaviour.
+
+---
+
+## Milestone 2 (historical) — Document Search & Retrieval Experience
 
 All changes are within Agent 3 ownership (`frontend/`, `tests/frontend/`). No backend, dependency,
 or infrastructure changes. The frontend now consumes the three retrieval endpoints already shipped
@@ -227,9 +313,9 @@ Browser inspection was not available in this environment, so please confirm visu
   functional 25 MB pre-check and backend enforcement are unaffected, so this is cosmetic only.
 
 ## Remaining tasks (for later milestones)
-- Milestone 3+: the conversational experience (grounded answers over retrieved passages, source
-  citations). The `Ask` page search workspace and result rendering are already scaffolded and
-  styled (Milestone 2).
+- Milestone 3+: grounded LLM answers over the retrieved passages. The conversational Ask UI is
+  already built (Milestone 2 refinement) and the message model has a `generated_answer` slot ready
+  to receive an LLM response without a UI rebuild.
 - Add document deletion to the UI once the backend exposes it.
 - Optional: a light-mode toggle, and a richer per-document detail view.
 

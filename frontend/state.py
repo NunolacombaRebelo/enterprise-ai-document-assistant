@@ -32,6 +32,9 @@ KEY_INDEX_STATUS = "index_status"
 KEY_INDEX_RESULT = "index_result"
 KEY_INDEX_ERROR = "index_error"
 
+# Conversational Ask page — message history (list of dicts in session state)
+KEY_CONVERSATION = "ask_conversation"
+
 
 def init_state() -> None:
     """Initialise session-state defaults once per session."""
@@ -69,6 +72,8 @@ def init_state() -> None:
         st.session_state[KEY_INDEX_RESULT] = None
     if KEY_INDEX_ERROR not in st.session_state:
         st.session_state[KEY_INDEX_ERROR] = None
+    if KEY_CONVERSATION not in st.session_state:
+        st.session_state[KEY_CONVERSATION] = []
 
 
 def get(key: str, default: Any = None) -> Any:

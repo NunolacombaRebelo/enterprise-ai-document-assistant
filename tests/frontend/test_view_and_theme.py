@@ -115,10 +115,10 @@ class TestTheme:
             # can be ordered brand -> nav -> status); it is styled via the stPageLink selector.
             "stPageLink",
             ".aurora-status",
-            # Milestone 2 search UI.
+            # Milestone 2 conversational Ask UI.
             ".aurora-mode",
             ".aurora-result",
-            ".aurora-index-status",
+            ".aurora-bubble-user",
         ):
             assert cls in css, f"missing CSS class {cls}"
 

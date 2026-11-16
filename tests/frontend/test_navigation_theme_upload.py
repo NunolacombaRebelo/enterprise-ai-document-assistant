@@ -186,12 +186,9 @@ class TestBackendStates:
 
 
 class TestAskPage:
-    def test_ask_page_renders_search_workspace(self) -> None:
-        """The Ask page is a search workspace: mode indicator, input, examples, no fake chat."""
+    def test_ask_page_is_conversational(self) -> None:
+        """The Ask page is a chat: mode indicator, chat_input, empty state, no search form."""
 
-        # Render the Ask page body directly with the theme injected, mirroring main(). Imports are
-        # done inside the function because AppTest.from_function executes it in an isolated
-        # namespace where module-level imports are not visible.
         def ask_flow() -> None:
             from frontend.api.client import DocumentAPIClient
             from frontend.components import chat
@@ -209,14 +206,17 @@ class TestAskPage:
         # The BM25 / keyword retrieval mode is clearly labelled (not presented as semantic/AI).
         assert "aurora-mode" in md
         assert "BM25" in md
-        # A search input and a submit button are present.
-        assert len(at.text_input) == 1
-        assert any(b.label == "Search documents" for b in at.button)
-        # No fake chat functionality.
-        assert len(at.chat_input) == 0
+        # A chat input is present (the conversational composer).
+        assert len(at.chat_input) == 1
+        # No old search-form controls.
+        assert len(at.text_input) == 0
+        # The empty-state guidance is shown.
+        assert "Start a conversation" in md
+        # No fabricated AI answer panel.
+        assert "aurora-coming-soon" not in md
 
-    def test_ask_page_renders_results(self) -> None:
-        """The Ask page renders ranked results with source references when a search is seeded."""
+    def test_ask_page_renders_conversation(self) -> None:
+        """User + assistant messages render in order with real citations."""
 
         def ask_with_results() -> None:
             from frontend.api.client import DocumentAPIClient
@@ -252,19 +252,87 @@ class TestAskPage:
                     ),
                 ),
             )
-            state.set_value(state.KEY_SEARCHED, True)
-            state.set_value(state.KEY_LAST_QUERY, "refund policy")
-            state.set_value(state.KEY_SEARCH_RESULTS, resp)
+            state.set_value(
+                state.KEY_CONVERSATION,
+                [
+                    {"role": "user", "text": "refund policy"},
+                    {"role": "assistant", "response": resp},
+                ],
+            )
             chat.render_ask_page(DocumentAPIClient())
 
         at = AppTest.from_function(ask_with_results, default_timeout=20)
         at.run()
         assert not at.exception, f"ask results raised: {[e.value for e in at.exception]}"
         md = " ".join(m.value for m in at.markdown)
+        # The user message bubble is present.
+        assert "aurora-bubble-user" in md
+        assert "refund policy" in md
+        # The assistant result card with real source references is present.
         assert "aurora-result" in md
         assert "policy.pdf" in md
         assert "Page 2" in md
         assert "2.50" in md
-        assert "1 result" in md
+        assert "1 passage" in md
         # No fabricated AI answer panel.
-        assert "aurora-coming-soon" not in md or "In development" not in md
+        assert "aurora-coming-soon" not in md
+
+    def test_ask_page_no_match_state(self) -> None:
+        """An empty result set renders a helpful no-match message, not an error."""
+
+        def ask_no_match() -> None:
+            from frontend.api.client import DocumentAPIClient
+            from frontend.api.models import SearchResponse
+            from frontend.components import chat
+
+            from frontend import state, theme
+
+            theme.inject_theme()
+            state.init_state()
+            resp = SearchResponse(query="zzz", mode="lexical", results=(), citations=())
+            state.set_value(
+                state.KEY_CONVERSATION,
+                [
+                    {"role": "user", "text": "zzz"},
+                    {"role": "assistant", "response": resp},
+                ],
+            )
+            chat.render_ask_page(DocumentAPIClient())
+
+        at = AppTest.from_function(ask_no_match, default_timeout=20)
+        at.run()
+        assert not at.exception
+        md = " ".join(m.value for m in at.markdown)
+        assert "No matching passages" in md
+        # No rendered result card (the CSS class name appears in the stylesheet,
+        # so check for the rendered <span> markup instead).
+        assert '<span class="aurora-result-rank">' not in md
+
+    def test_ask_page_error_state(self) -> None:
+        """A retrieval error renders as an assistant-side error message."""
+
+        def ask_error() -> None:
+            from frontend.api.client import DocumentAPIClient
+            from frontend.components import chat
+
+            from frontend import state, theme
+
+            theme.inject_theme()
+            state.init_state()
+            state.set_value(
+                state.KEY_CONVERSATION,
+                [
+                    {"role": "user", "text": "hello"},
+                    {"role": "error", "text": "The backend is not reachable. Please try again."},
+                ],
+            )
+            chat.render_ask_page(DocumentAPIClient())
+
+        at = AppTest.from_function(ask_error, default_timeout=20)
+        at.run()
+        assert not at.exception
+        # st.error renders as an alert element, not markdown.
+        error_texts = [e.value for e in at.error]
+        assert any("The backend is not reachable" in t for t in error_texts), (
+            f"error alert not found: {error_texts}"
+        )

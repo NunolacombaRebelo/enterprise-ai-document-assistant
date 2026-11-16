@@ -586,24 +586,6 @@ section[data-testid="stSidebar"] [data-testid="stPageLink"] a svg {{
   margin-top: 6px;
 }}
 
-/* ---- Documents: search index status ------------------------------------ */
-.aurora-index-status {{
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 20px;
-  padding: 12px 14px;
-  border-radius: {RADIUS_SM};
-  border: 1px solid {BORDER};
-  background: {BG_SURFACE};
-  margin-bottom: 12px;
-  font-size: 0.85rem;
-  color: {TEXT_MUTED};
-}}
-.aurora-index-status-item strong {{
-  color: {TEXT_PRIMARY};
-  font-weight: 700;
-}}
-
 /* ---- Ask / search: mode indicator -------------------------------------- */
 .aurora-mode {{
   display: flex;
@@ -763,70 +745,39 @@ section[data-testid="stSidebar"] [data-testid="stPageLink"] a svg {{
   padding: 2px 8px;
 }}
 
-/* ---- Ask / coming soon -------------------------------------------------- */
-.aurora-coming-soon {{
-  position: relative;
+/* ---- Chat bubbles (Ask page) ------------------------------------------- */
+.aurora-bubble {{
   border-radius: {RADIUS};
-  border: 1px solid {BORDER};
-  background:
-    radial-gradient(700px 300px at 100% 0%, rgba(34, 211, 238, 0.14), transparent 60%),
-    radial-gradient(700px 300px at 0% 100%, rgba(139, 92, 246, 0.16), transparent 60%),
-    {BG_SURFACE};
-  padding: 40px;
-  box-shadow: {SHADOW};
-  text-align: center;
+  padding: 12px 16px;
+  line-height: 1.55;
+  word-break: break-word;
 }}
-.aurora-coming-soon .aurora-cs-badge {{
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(34, 211, 238, 0.4);
-  background: rgba(34, 211, 238, 0.1);
-  color: {ACCENT_CYAN};
-  font-size: 0.78rem;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  margin-bottom: 18px;
-}}
-.aurora-coming-soon h2 {{
-  font-size: 1.6rem;
-  font-weight: 700;
-  margin-bottom: 10px;
-}}
-.aurora-coming-soon p {{
-  color: {TEXT_MUTED};
-  max-width: 620px;
-  margin: 0 auto 26px;
-  font-size: 0.95rem;
-  line-height: 1.6;
-}}
-.aurora-feature-grid {{
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 14px;
-  max-width: 860px;
-  margin: 0 auto;
-  text-align: left;
-}}
-.aurora-feature {{
-  background: {BG_SURFACE_2};
-  border: 1px solid {BORDER};
-  border-radius: {RADIUS_SM};
-  padding: 16px;
-}}
-.aurora-feature .aurora-feature-icon {{ font-size: 1.4rem; margin-bottom: 8px; }}
-.aurora-feature .aurora-feature-title {{
-  font-size: 0.92rem;
-  font-weight: 650;
+.aurora-bubble-user {{
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.22), rgba(139, 92, 246, 0.22));
+  border: 1px solid rgba(139, 92, 246, 0.4);
   color: {TEXT_PRIMARY};
-  margin-bottom: 4px;
+  display: inline-block;
+  max-width: 100%;
 }}
-.aurora-feature .aurora-feature-desc {{
-  font-size: 0.8rem;
-  color: {TEXT_MUTED};
-  line-height: 1.5;
+/* Right-align the user bubble within its (full-width) chat message row. */
+[data-testid="stChatMessageUser"] {{
+  display: flex;
+  justify-content: flex-end;
+}}
+[data-testid="stChatMessageUser"] .aurora-bubble {{
+  max-width: 75%;
+}}
+/* Assistant messages keep a comfortable reading width. */
+[data-testid="stChatMessage"] {{
+  gap: 10px;
+}}
+[data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] {{
+  max-width: 860px;
+}}
+/* Suggestion chips (empty-state example queries). */
+[data-testid="stChatMessage"] + .stButton,
+.aurora-chat-empty + div .stButton {{
+  justify-content: center;
 }}
 
 /* ---- Toolbar (search / sort / filter) ---------------------------------- */

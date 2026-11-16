@@ -49,8 +49,8 @@ frontend/
    ├─ __init__.py
    ├─ cards.py          # reusable stat card, status badge, section header (presentation-only)
    ├─ layout.py         # page setup, sidebar brand/nav/status, backend check, banner
-   ├─ documents.py      # overview cards + upload panel + search-index panel + card library
-   └─ chat.py           # "Ask" page — functional BM25 document-search workspace (no fake AI)
+   ├─ documents.py      # overview cards + upload panel (auto-indexes) + card library
+   └─ chat.py           # "Ask" page — conversational BM25 document-search chat (no fake AI)
 ```
 
 **Navigation:** the app uses Streamlit's native multipage navigation (`st.navigation` + `st.Page`)
@@ -106,6 +106,15 @@ defensive parsers live in `api/models.py`. A `top_k` of `None` is omitted from t
 the backend default applies. Empty / invalid queries surface as `HTTPStatusError(422)`; an unknown
 document as `HTTPStatusError(404)`; a document with no extractable text as `HTTPStatusError(409)`.
 
+**How the frontend uses these:**
+- `search()` is called from the Ask page's conversational composer for every user question.
+- `index_document()` is called **automatically** by the Documents page immediately after a
+  successful upload of a processed document (the user never sees an "index" control). A failure is
+  non-fatal: the document stays uploaded/visible, and a warning notes it is not yet searchable.
+- `index_status()` is **no longer surfaced in the UI** (the technical index panel was removed); the
+  client method is retained for observability and future use. Indexing remains fully available to
+  the application — it is simply no longer a user-facing control.
+
 > **BM25 note (not a bug):** on very small corpora, a term that appears in *every* chunk has
 > inverse-document-frequency ≤ 0, which rank-bm25 clamps to 0, so that term contributes no score and
 > the query can return no matches. This is documented in the backend handoff; the frontend simply
@@ -140,36 +149,35 @@ classes — no fragile, deeply-nested selectors.
   amber "Checking…"). The sidebar is ordered **brand → navigation → status** for a clear visual
   hierarchy. The nav is the single source of truth for navigation state — there is no duplicate
   radio or decorative pill navigation.
-- **Documents page:**
+- **Documents page** — focused on the user's documents (no indexing/infrastructure controls):
   - **Overview cards** — four stat cards derived from **real** backend data (never fabricated):
     Total documents, Processed, Errors, and Backend status. When the collection cannot be loaded
     the document-derived cards show a neutral "—".
-    - **Upload panel** — a gradient-accented card with a single, fully-styled `st.file_uploader`
-      (PDF only, 25 MB limit stated in the help text to match the backend), a loading spinner, and
-      success/error feedback. The decorative drag-and-drop zone was removed so the upload control is
-      one coherent, functional element rather than a decorative dropzone plus a separate native
-      uploader. On success the collection is refreshed so the new document appears immediately.
-  - **Search-index panel** — a card that shows the **real** global index status (documents indexed,
-    chunks, retrieval mode, vectors present) and offers an idempotent **Index document** action: a
-    selectbox of processed documents + a button that calls `POST /documents/{id}/index`. The result
-    (chunks indexed) is shown immediately; 404/409/5xx are mapped to concise messages. Index status
-    is cached in session state and best-effort (an offline backend shows "Index status unavailable."
-    rather than crashing).
+  - **Upload panel** — a gradient-accented card with a single, fully-styled `st.file_uploader`
+    (PDF only, 25 MB limit stated in the help text to match the backend), a loading spinner, and
+    success/error feedback. On a successful upload of a processed document the frontend
+    **auto-indexes** it (a single `POST /documents/{id}/index` call) so it is immediately
+    searchable; an indexing failure is non-fatal (the document is still uploaded and visible, with
+    a warning that it is not yet searchable). The user never sees BM25 / chunk / vector concepts.
   - **Document library** — a responsive grid of document cards (filename, status badge, page
     count, upload timestamp, document ID, and an inline error reason for failed documents) with a
     **client-side toolbar**: search by name, sort (newest / oldest / name A–Z), and filter
     (all / processed / errors). Includes a "no matches" state and a Refresh control.
-- **Ask page (Milestone 2 — functional document search):** a real **BM25 lexical retrieval
-  workspace**, not a generative-AI chat. It shows:
-  - A clear **retrieval-mode indicator** ("BM25 · keyword retrieval") with an honest note that
+- **Ask page (Milestone 2 — conversational document search):** a **chat-style interface** (not a
+  search form, not a generative-AI chat). It shows:
+  - A compact **retrieval-mode indicator** ("BM25 · keyword retrieval") with an honest note that
     semantic / AI answers arrive in a later milestone.
-  - A `st.form` search panel (query input + "Search documents" submit) plus example-query buttons
-    (shown only before the first search).
-  - **Ranked result cards**: rank badge, filename, page, score, an expandable passage, and a source
-    citation line — all from the real `POST /search` response.
-  - Distinct states: initial guidance (with a "no documents indexed yet" variant that points to the
-    Documents page), a "no matching passages" state (a valid empty result, not an error), and
-    concise error messages for offline / timeout / HTTP / unexpected responses.
+  - A **conversation area** using `st.chat_message`: user questions as right-aligned bubbles, and
+    retrieved passages as assistant-side messages. Each assistant turn renders a results header
+    ("N passages found for …") followed by **ranked result cards** (rank, filename, page, score,
+    expandable passage, source citation) — all from the real `POST /search` response.
+  - A **message composer** anchored at the bottom via `st.chat_input` (Enter to submit).
+  - The conversation is held in **session state** (`KEY_CONVERSATION`, a list of message dicts) so
+    history persists across reruns within the session, in correct order, with no duplicate
+    submissions.
+  - Distinct states: a polished empty state with example-query suggestion chips, a "no matching
+    passages" state (a valid empty result, not an error), and assistant-side error messages for
+    offline / timeout / HTTP / unexpected responses.
   - No AI-generated answers are fabricated; results are real retrieved passages with citations.
 
 ### Statuses
@@ -185,16 +193,16 @@ dropped), so a future backend status does not break the UI.
 - **Loading** — spinners for upload and collection load.
 - **Empty collection** — a styled empty state ("No documents yet").
 - **No matches** — when search/filter excludes all documents.
-- **Success** — upload success message; the collection refreshes automatically; index success
-  message with the chunk count.
+- **Success** — upload success message ("processed and ready to search"); the collection refreshes
+  automatically.
 - **Error** — upload failures (invalid PDF, oversized, server error), list failures, per-document
-  processing errors (shown inline on the document card), index failures (404 unknown document,
-  409 no extractable text, 5xx), and search failures (offline / timeout / 422 / 5xx / unexpected
-  body) — all mapped to concise, user-facing messages.
-- **Search: no results** — a styled "No matching passages found" state (a valid empty result, not
-  an error) with guidance to try different keywords or index more documents.
-- **Search: nothing indexed** — an initial-guidance variant that explains no documents are indexed
-  yet and points to the Documents page.
+  processing errors (shown inline on the document card), auto-index failures (non-fatal warning:
+  the document is uploaded but not yet searchable), and search failures (offline / timeout / 422 /
+  5xx / unexpected body) — all mapped to concise, user-facing messages.
+- **Ask: empty conversation** — a polished empty state with example-query suggestion chips.
+- **Ask: no results** — a styled "No matching passages" message inside the assistant turn (a valid
+  empty result, not an error) with guidance to try different keywords or add more documents.
+- **Ask: error** — an assistant-side error bubble (offline / timeout / HTTP / unexpected body).
 
 ## Testing
 
@@ -216,13 +224,15 @@ credentials, or network access**:
 - `test_view_and_theme.py` — the client-side library view logic (search / sort / filter, including
   combined and no-match cases) and the theme module (logo SVG well-formedness, CSS contains the
   core classes — now including `stPageLink`, `.aurora-mode`, `.aurora-result`,
-  `.aurora-index-status` — status-badge variants, and HTML-escaping of card values).
+  `.aurora-bubble-user` — status-badge variants, and HTML-escaping of card values).
 - `test_navigation_theme_upload.py` — `AppTest`-based rendering of the real app: a single native
   `st.navigation` (no duplicate radio / decorative pills), the Aurora theme present and idempotent
   (one `<style>` block) on every rerun, a single PDF-only file uploader with accurate 25 MB
   messaging, the backend status pill states, the sidebar hierarchy (brand → nav → status) with
-  `st.page_link` elements, and the Ask page search workspace (mode indicator, search input, example
-  buttons, no fake chat) plus rendered result cards.
+  `st.page_link` elements, and the **conversational Ask page** (mode indicator, `st.chat_input`
+  composer, empty state with suggestion chips, no search form) plus rendered conversation messages
+  (user bubble + assistant result cards with real citations), the no-match state, and the
+  assistant-side error state.
 
 A `conftest.py` provides a fake `httpx` transport and makes the `frontend` package importable.
 
@@ -241,29 +251,29 @@ Docker Compose (see `docs/development.md`):
 docker compose up
 ```
 
-## Validation (Milestone 2 — document search & retrieval)
+## Validation (Milestone 2 — conversational document search)
 
 Executed on this machine (Windows):
 
 - `uv run ruff check .` — passed (whole repo clean).
 - `uv run ruff format --check .` — passed (92 files already formatted).
-- `uv run pytest tests/frontend/` — **101 passed** (Milestone 1 suite + 18 new tests for the
-  search / index / status API client and the Ask search workspace).
-- `uv run pytest` (full repo: backend + frontend + integration) — **221 passed**.
-- **End-to-end (real backend, live HTTP):** started the FastAPI app on `127.0.0.1:8000` and drove
-  the full cycle through the frontend client:
+- `uv run pytest tests/frontend/` — **103 passed** (Milestone 1 suite + API-client retrieval tests
+  + the conversational Ask-page `AppTest` tests).
+- `uv run pytest` (full repo: backend + frontend + integration) — **223 passed**.
+- **End-to-end (real backend, live HTTP on `127.0.0.1:8000`):** drove the conversational flow
+  through the frontend client:
   1. Upload a 3-page PDF → `processed`, `page_count=3`.
-  2. `POST /documents/{id}/index` → `chunks_indexed=3`, `vectors_added=0` (lexical-only).
-  3. `GET /index/status` → `documents_indexed`, `chunks_indexed`, `retrieval_mode=lexical`,
-     `vectors_present=False`.
-  4. `POST /search` "Page 2" → ranked results, top result on page 2, citations present.
-  5. No-match query → `results: []` (valid empty, not an error).
-  6. Empty query → `HTTPStatusError(422)`.
-- **Streamlit `AppTest`:** the Ask page renders with **0 exceptions** — BM25 mode indicator, search
-  input, example-query buttons, and the empty/guidance states; result cards render with rank,
-  filename, page, score, expandable passage, and citation. The sidebar renders in the order
-  brand → `st.page_link` nav → status pill. The theme CSS (all `.aurora-*` + `stPageLink` +
-  `stHeader` + `stFileUploader` classes) is present as a single `<style>` block.
+  2. Auto-index (what the Documents page does after upload) → `chunks_indexed=3`,
+     `vectors_added=0` (lexical-only).
+  3. `POST /search` "Page 2" → ranked results, top result on page 2, citations present.
+  4. No-match query → `results: []` (valid empty, not an error).
+- **Streamlit `AppTest`:** the full app renders with **0 exceptions**. The Documents page shows the
+  overview cards, the single upload panel, and the library — and **no** "Search index" panel or
+  "Index document" button. The Ask page renders the conversational UI: BM25 mode indicator,
+  `st.chat_input` composer, empty state with suggestion chips, and (when a conversation is seeded)
+  a user bubble + assistant result cards with real citations, the no-match state, and the
+  assistant-side error state. The sidebar renders in the order brand → `st.page_link` nav → status
+  pill. The theme CSS is present as a single `<style>` block.
 
 > Note: the full repository `pytest` run also includes the RAG integration tests
 > (`tests/integration/test_retrieval_infrastructure.py`). The full suite (backend + frontend +
@@ -274,6 +284,13 @@ Executed on this machine (Windows):
 - The `Ask` page performs **lexical (BM25) retrieval only**. Natural-language question answering
   and grounded LLM answers are out of scope for Milestone 2 (planned Milestone 3+); the UI is
   clearly labelled as "BM25 · keyword retrieval" and does not fabricate AI answers.
+- **Auto-indexing is frontend-triggered, not backend-managed.** The Documents page calls
+  `POST /documents/{id}/index` once, right after a successful upload. This is safe and
+  idempotent, but it is a *frontend* workaround: documents uploaded before this change (or whose
+  auto-index failed) are not automatically searchable until re-indexed. A reliable
+  **backend-managed** automatic index-on-upload (or a reindex-all recovery path) is the proper fix
+  and is requested from Agent 2 (see `docs/handoffs/03-frontend.md`). The frontend does not run
+  uncontrolled indexing of the whole collection on rerun.
 - Document **deletion** is not exposed in the UI (no `DELETE /documents/{id}` endpoint in the
   current contract). This is a future addition.
 - The frontend's 25 MB upload limit is a client-side pre-check; the backend enforces the real
