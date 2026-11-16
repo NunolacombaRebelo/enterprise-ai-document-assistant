@@ -32,8 +32,9 @@ def _render_documents_page() -> None:
 
 def _render_ask_page() -> None:
     """Ask page body (executed by ``st.navigation``)."""
+    client = DocumentAPIClient()
     layout.render_banner()
-    chat.render_ask_page()
+    chat.render_ask_page(client)
 
 
 def main() -> None:
@@ -44,31 +45,33 @@ def main() -> None:
     client = DocumentAPIClient()
     layout.check_backend(client)
 
-    # Branded sidebar chrome (logo, tagline, backend status) renders at the top of the sidebar,
-    # above the native navigation.
-    layout.render_sidebar_chrome()
+    # A single native navigation system. st.navigation is the one source of truth for which pages
+    # exist, the active page, and URL routing. It is rendered hidden (position="hidden") so we can
+    # control the sidebar ordering ourselves; the visible nav is drawn with st.page_link below.
+    pages = [
+        st.Page(
+            _render_documents_page,
+            title="Documents",
+            icon="📄",
+            url_path="documents",
+            default=True,
+        ),
+        st.Page(
+            _render_ask_page,
+            title="Ask",
+            icon="✨",
+            url_path="ask",
+        ),
+    ]
+    nav = st.navigation(pages, position="hidden")
+    active_page = nav
 
-    # A single native navigation system. st.navigation returns the active page; calling .run()
-    # executes that page's body. This is the one source of truth for navigation state — no
-    # duplicate radio or decorative pills.
-    nav = st.navigation(
-        [
-            st.Page(
-                _render_documents_page,
-                title="Documents",
-                icon="📄",
-                url_path="documents",
-                default=True,
-            ),
-            st.Page(
-                _render_ask_page,
-                title="Ask",
-                icon="✨",
-                url_path="ask",
-            ),
-        ],
-        position="sidebar",
-    )
+    # Sidebar hierarchy: brand (top) → navigation → backend status (bottom).
+    layout.render_sidebar_brand()
+    layout.render_sidebar_nav(pages, active_page)
+    layout.render_sidebar_status()
+
+    # Execute the active page body.
     nav.run()
 
 

@@ -35,7 +35,8 @@ class TestNavigation:
     def test_single_navigation_system_no_radio(self) -> None:
         """There must be exactly one navigation system (st.navigation) and no radio."""
         at = _render()
-        # The native st.navigation renders as a SpecialBlock in the sidebar.
+        # The native st.navigation renders as a SpecialBlock in the sidebar (hidden position,
+        # the visible nav is drawn with st.page_link).
         special_blocks = [e for e in at.sidebar if type(e).__name__ == "SpecialBlock"]
         assert len(special_blocks) >= 1, "st.navigation nav block missing"
         # The old duplicate radio navigation must be gone.
@@ -46,6 +47,43 @@ class TestNavigation:
         at = _render()
         md = _markdown(at)
         assert "aurora-nav-item" not in md, "decorative nav pills still rendered"
+
+    def test_page_links_rendered(self) -> None:
+        """The visible nav is two st.page_link items (Documents, Ask) in the sidebar."""
+        at = _render()
+        labels = [pl.label for pl in at.page_link]
+        assert labels == ["Documents", "Ask"], f"unexpected page links: {labels}"
+
+    def test_sidebar_hierarchy_brand_nav_status(self) -> None:
+        """Sidebar order is brand -> navigation -> status (brand above nav, status below)."""
+        at = _render()
+        sidebar = at.sidebar
+        brand_idx = next(
+            (
+                i
+                for i, e in enumerate(sidebar)
+                if type(e).__name__ == "Markdown" and 'aurora-brand"' in (e.value or "")
+            ),
+            None,
+        )
+        nav_idx = next(
+            (i for i, e in enumerate(sidebar) if type(e).__name__ == "PageLink"),
+            None,
+        )
+        status_idx = next(
+            (
+                i
+                for i, e in enumerate(sidebar)
+                if type(e).__name__ == "Markdown" and "aurora-status" in (e.value or "")
+            ),
+            None,
+        )
+        assert brand_idx is not None, "brand block missing"
+        assert nav_idx is not None, "nav (page_link) missing"
+        assert status_idx is not None, "status pill missing"
+        assert brand_idx < nav_idx < status_idx, (
+            f"sidebar order wrong: brand={brand_idx} nav={nav_idx} status={status_idx}"
+        )
 
     def test_documents_is_default_page(self) -> None:
         """The Documents page is the default and renders its content."""
@@ -76,7 +114,7 @@ class TestTheme:
             "aurora-badge",
             "aurora-status",
             "aurora-brand",
-            "stSidebarNav",
+            "stPageLink",
             "stFileUploader",
             "stHeader",
         ):
@@ -95,7 +133,7 @@ class TestTheme:
         assert not at.exception
         md = _markdown(at)
         assert "aurora-stats" in md
-        assert "stSidebarNav" in md
+        assert "stPageLink" in md
 
 
 class TestUpload:
@@ -148,27 +186,85 @@ class TestBackendStates:
 
 
 class TestAskPage:
-    def test_ask_page_renders_coming_soon(self) -> None:
-        """The Ask page renders a clearly-identified 'coming soon' panel (no fake AI)."""
+    def test_ask_page_renders_search_workspace(self) -> None:
+        """The Ask page is a search workspace: mode indicator, input, examples, no fake chat."""
 
         # Render the Ask page body directly with the theme injected, mirroring main(). Imports are
         # done inside the function because AppTest.from_function executes it in an isolated
         # namespace where module-level imports are not visible.
         def ask_flow() -> None:
+            from frontend.api.client import DocumentAPIClient
             from frontend.components import chat
 
             from frontend import state, theme
 
             theme.inject_theme()
             state.init_state()
-            chat.render_ask_page()
+            chat.render_ask_page(DocumentAPIClient())
 
         at = AppTest.from_function(ask_flow, default_timeout=20)
         at.run()
         assert not at.exception, f"ask page raised: {[e.value for e in at.exception]}"
         md = " ".join(m.value for m in at.markdown)
-        assert "aurora-coming-soon" in md
-        assert "In development" in md
-        assert "aurora-feature" in md
+        # The BM25 / keyword retrieval mode is clearly labelled (not presented as semantic/AI).
+        assert "aurora-mode" in md
+        assert "BM25" in md
+        # A search input and a submit button are present.
+        assert len(at.text_input) == 1
+        assert any(b.label == "Search documents" for b in at.button)
         # No fake chat functionality.
         assert len(at.chat_input) == 0
+
+    def test_ask_page_renders_results(self) -> None:
+        """The Ask page renders ranked results with source references when a search is seeded."""
+
+        def ask_with_results() -> None:
+            from frontend.api.client import DocumentAPIClient
+            from frontend.api.models import Citation, SearchResponse, SearchResult
+            from frontend.components import chat
+
+            from frontend import state, theme
+
+            theme.inject_theme()
+            state.init_state()
+            resp = SearchResponse(
+                query="refund policy",
+                mode="lexical",
+                results=(
+                    SearchResult(
+                        chunk_id="d1:0",
+                        document_id="d1",
+                        filename="policy.pdf",
+                        page=2,
+                        chunk_index=0,
+                        text="Refund policy passage.",
+                        score=2.5,
+                        sources=("bm25",),
+                    ),
+                ),
+                citations=(
+                    Citation(
+                        document_id="d1",
+                        filename="policy.pdf",
+                        page=2,
+                        chunk_index=0,
+                        excerpt="Refund policy passage.",
+                    ),
+                ),
+            )
+            state.set_value(state.KEY_SEARCHED, True)
+            state.set_value(state.KEY_LAST_QUERY, "refund policy")
+            state.set_value(state.KEY_SEARCH_RESULTS, resp)
+            chat.render_ask_page(DocumentAPIClient())
+
+        at = AppTest.from_function(ask_with_results, default_timeout=20)
+        at.run()
+        assert not at.exception, f"ask results raised: {[e.value for e in at.exception]}"
+        md = " ".join(m.value for m in at.markdown)
+        assert "aurora-result" in md
+        assert "policy.pdf" in md
+        assert "Page 2" in md
+        assert "2.50" in md
+        assert "1 result" in md
+        # No fabricated AI answer panel.
+        assert "aurora-coming-soon" not in md or "In development" not in md

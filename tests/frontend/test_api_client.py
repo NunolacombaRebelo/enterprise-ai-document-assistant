@@ -276,3 +276,223 @@ class TestAgainstRealBackend:
         with pytest.raises(HTTPStatusError) as exc:
             client.upload_document("not-a-pdf.pdf", b"this is not a pdf at all")
         assert exc.value.status_code == 400
+
+
+class TestSearch:
+    def test_search_request_construction(self, base_url: str) -> None:
+        """POST /search with a JSON body carrying the query (and optional top_k)."""
+        payload = {"query": "q", "mode": "lexical", "results": [], "citations": []}
+        transport = make_transport(lambda req: json_response(200, payload))
+        client = DocumentAPIClient(base_url=base_url, transport=transport)
+        client.search("what is the refund policy", top_k=5)
+
+        req = transport.requests[0]
+        assert req.method == "POST"
+        assert req.url.path == "/search"
+        import json
+
+        body = json.loads(req.content.decode("utf-8"))
+        assert body == {"query": "what is the refund policy", "top_k": 5}
+
+    def test_search_omits_top_k_when_none(self, base_url: str) -> None:
+        payload = {"query": "q", "mode": "lexical", "results": [], "citations": []}
+        transport = make_transport(lambda req: json_response(200, payload))
+        client = DocumentAPIClient(base_url=base_url, transport=transport)
+        client.search("q")
+        import json
+
+        body = json.loads(transport.requests[0].content.decode("utf-8"))
+        assert "top_k" not in body
+
+    def test_search_parses_results_and_citations(self, base_url: str) -> None:
+        payload = {
+            "query": "refund",
+            "mode": "lexical",
+            "results": [
+                {
+                    "chunk_id": "d1:0",
+                    "document_id": "d1",
+                    "filename": "a.pdf",
+                    "page": 2,
+                    "chunk_index": 0,
+                    "text": "Refund policy text",
+                    "score": 3.5,
+                    "sources": ["bm25"],
+                }
+            ],
+            "citations": [
+                {
+                    "document_id": "d1",
+                    "filename": "a.pdf",
+                    "page": 2,
+                    "chunk_index": 0,
+                    "excerpt": "Refund policy text",
+                }
+            ],
+        }
+        transport = make_transport(lambda req: json_response(200, payload))
+        client = DocumentAPIClient(base_url=base_url, transport=transport)
+        resp = client.search("refund")
+        assert resp.mode == "lexical"
+        assert len(resp.results) == 1
+        r = resp.results[0]
+        assert r.filename == "a.pdf"
+        assert r.page == 2
+        assert r.score == 3.5
+        assert r.sources == ("bm25",)
+        assert len(resp.citations) == 1
+        assert resp.citations[0].page == 2
+
+    def test_search_empty_results_is_not_error(self, base_url: str) -> None:
+        """An empty match is a valid 200 with results: [], not an exception."""
+        payload = {"query": "zzz", "mode": "lexical", "results": [], "citations": []}
+        transport = make_transport(lambda req: json_response(200, payload))
+        client = DocumentAPIClient(base_url=base_url, transport=transport)
+        resp = client.search("zzz")
+        assert resp.results == ()
+        assert resp.citations == ()
+
+    def test_search_422_for_empty_query(self, base_url: str) -> None:
+        transport = make_transport(
+            lambda req: json_response(422, {"detail": [{"msg": "query is required"}]})
+        )
+        client = DocumentAPIClient(base_url=base_url, transport=transport)
+        with pytest.raises(HTTPStatusError) as exc:
+            client.search("x")
+        assert exc.value.status_code == 422
+
+    def test_search_offline_raises_unavailable(self, base_url: str) -> None:
+        def handler(req: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("offline")
+
+        transport = make_transport(handler)
+        client = DocumentAPIClient(base_url=base_url, transport=transport)
+        with pytest.raises(BackendUnavailableError):
+            client.search("q")
+
+    def test_search_timeout_raises(self, base_url: str) -> None:
+        def handler(req: httpx.Request) -> httpx.Response:
+            raise httpx.ReadTimeout("slow")
+
+        transport = make_transport(handler)
+        client = DocumentAPIClient(base_url=base_url, transport=transport)
+        with pytest.raises(RequestTimeoutError):
+            client.search("q")
+
+    def test_search_unexpected_body_raises(self, base_url: str) -> None:
+        transport = make_transport(lambda req: json_response(200, {"unexpected": True}))
+        client = DocumentAPIClient(base_url=base_url, transport=transport)
+        with pytest.raises(UnexpectedResponseError):
+            client.search("q")
+
+
+class TestIndexDocument:
+    def test_index_request_construction(self, base_url: str) -> None:
+        payload = {"document_id": "d1", "chunks_indexed": 12, "vectors_added": 0}
+        transport = make_transport(lambda req: json_response(200, payload))
+        client = DocumentAPIClient(base_url=base_url, transport=transport)
+        result = client.index_document("d1")
+
+        req = transport.requests[0]
+        assert req.method == "POST"
+        assert req.url.path == "/documents/d1/index"
+        assert result.document_id == "d1"
+        assert result.chunks_indexed == 12
+        assert result.vectors_added == 0
+
+    def test_index_404_unknown_document(self, base_url: str) -> None:
+        transport = make_transport(lambda req: json_response(404, {"detail": "not found"}))
+        client = DocumentAPIClient(base_url=base_url, transport=transport)
+        with pytest.raises(HTTPStatusError) as exc:
+            client.index_document("missing")
+        assert exc.value.status_code == 404
+
+    def test_index_409_no_extractable_text(self, base_url: str) -> None:
+        transport = make_transport(lambda req: json_response(409, {"detail": "no text"}))
+        client = DocumentAPIClient(base_url=base_url, transport=transport)
+        with pytest.raises(HTTPStatusError) as exc:
+            client.index_document("d1")
+        assert exc.value.status_code == 409
+
+    def test_index_offline_raises_unavailable(self, base_url: str) -> None:
+        def handler(req: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("offline")
+
+        transport = make_transport(handler)
+        client = DocumentAPIClient(base_url=base_url, transport=transport)
+        with pytest.raises(BackendUnavailableError):
+            client.index_document("d1")
+
+
+class TestIndexStatus:
+    def test_index_status_request_construction(self, base_url: str) -> None:
+        payload = {
+            "documents_indexed": 2,
+            "chunks_indexed": 10,
+            "vectors_present": False,
+            "retrieval_mode": "lexical",
+            "collection": "documents",
+        }
+        transport = make_transport(lambda req: json_response(200, payload))
+        client = DocumentAPIClient(base_url=base_url, transport=transport)
+        status = client.index_status()
+
+        req = transport.requests[0]
+        assert req.method == "GET"
+        assert req.url.path == "/index/status"
+        assert status.documents_indexed == 2
+        assert status.chunks_indexed == 10
+        assert status.vectors_present is False
+        assert status.retrieval_mode == "lexical"
+        assert status.collection == "documents"
+
+    def test_index_status_offline_raises_unavailable(self, base_url: str) -> None:
+        def handler(req: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("offline")
+
+        transport = make_transport(handler)
+        client = DocumentAPIClient(base_url=base_url, transport=transport)
+        with pytest.raises(BackendUnavailableError):
+            client.index_status()
+
+
+class TestRetrievalAgainstRealBackend:
+    """Validate the Milestone 2 retrieval client against the actual FastAPI backend.
+
+    Uses FastAPI's TestClient as the httpx transport so the real request/response shapes are
+    exercised without a running server, network, or credentials.
+    """
+
+    @pytest.fixture
+    def real_transport(self):
+        from fastapi.testclient import TestClient
+
+        from enterprise_ai_document_assistant.api.main import app
+
+        return TestClient(app)._transport
+
+    def test_index_status_shape(self, real_transport) -> None:
+        client = DocumentAPIClient(base_url="http://testserver", transport=real_transport)
+        status = client.index_status()
+        assert status.retrieval_mode in ("lexical", "vector", "hybrid")
+        assert status.documents_indexed >= 0
+        assert status.chunks_indexed >= 0
+        assert isinstance(status.vectors_present, bool)
+
+    def test_search_empty_index_returns_no_results(self, real_transport) -> None:
+        client = DocumentAPIClient(base_url="http://testserver", transport=real_transport)
+        resp = client.search("some query")
+        assert resp.mode in ("lexical", "vector", "hybrid")
+        assert isinstance(resp.results, tuple)
+
+    def test_index_unknown_document_404(self, real_transport) -> None:
+        client = DocumentAPIClient(base_url="http://testserver", transport=real_transport)
+        with pytest.raises(HTTPStatusError) as exc:
+            client.index_document("does-not-exist")
+        assert exc.value.status_code == 404
+
+    def test_search_empty_query_422(self, real_transport) -> None:
+        client = DocumentAPIClient(base_url="http://testserver", transport=real_transport)
+        with pytest.raises(HTTPStatusError) as exc:
+            client.search("")
+        assert exc.value.status_code == 422

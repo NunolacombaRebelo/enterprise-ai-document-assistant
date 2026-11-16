@@ -22,6 +22,16 @@ KEY_SEARCH = "doc_search"
 KEY_SORT = "doc_sort"
 KEY_FILTER = "doc_filter"
 
+# Milestone 2 — retrieval (Ask page + indexing)
+KEY_QUERY = "ask_query"
+KEY_LAST_QUERY = "ask_last_query"
+KEY_SEARCH_RESULTS = "ask_search_results"
+KEY_SEARCH_ERROR = "ask_search_error"
+KEY_SEARCHED = "ask_searched"
+KEY_INDEX_STATUS = "index_status"
+KEY_INDEX_RESULT = "index_result"
+KEY_INDEX_ERROR = "index_error"
+
 
 def init_state() -> None:
     """Initialise session-state defaults once per session."""
@@ -43,6 +53,22 @@ def init_state() -> None:
         st.session_state[KEY_SORT] = "newest"
     if KEY_FILTER not in st.session_state:
         st.session_state[KEY_FILTER] = "all"
+    if KEY_QUERY not in st.session_state:
+        st.session_state[KEY_QUERY] = ""
+    if KEY_LAST_QUERY not in st.session_state:
+        st.session_state[KEY_LAST_QUERY] = ""
+    if KEY_SEARCH_RESULTS not in st.session_state:
+        st.session_state[KEY_SEARCH_RESULTS] = None
+    if KEY_SEARCH_ERROR not in st.session_state:
+        st.session_state[KEY_SEARCH_ERROR] = None
+    if KEY_SEARCHED not in st.session_state:
+        st.session_state[KEY_SEARCHED] = False
+    if KEY_INDEX_STATUS not in st.session_state:
+        st.session_state[KEY_INDEX_STATUS] = None
+    if KEY_INDEX_RESULT not in st.session_state:
+        st.session_state[KEY_INDEX_RESULT] = None
+    if KEY_INDEX_ERROR not in st.session_state:
+        st.session_state[KEY_INDEX_ERROR] = None
 
 
 def get(key: str, default: Any = None) -> Any:

@@ -43,20 +43,23 @@ frontend/
 ├─ theme.py             # "Aurora" design system: colour tokens, logo SVG, injected CSS
 ├─ api/
 │  ├─ __init__.py
-│  ├─ client.py         # DocumentAPIClient (httpx): health/upload/list/get + typed errors
-│  └─ models.py         # Document dataclass + defensive JSON parsing
+│  ├─ client.py         # DocumentAPIClient (httpx): health/upload/list/get + index/search + typed errors
+│  └─ models.py         # Document + SearchResult/Citation/IndexStatus/IndexResult + defensive parsing
 └─ components/
    ├─ __init__.py
    ├─ cards.py          # reusable stat card, status badge, section header (presentation-only)
-   ├─ layout.py         # page setup, branded sidebar chrome, backend check, banner
-   ├─ documents.py      # overview cards + upload panel + card library (search/sort/filter)
-   └─ chat.py           # "Ask" page — clearly-identified future area (no fake AI)
+   ├─ layout.py         # page setup, sidebar brand/nav/status, backend check, banner
+   ├─ documents.py      # overview cards + upload panel + search-index panel + card library
+   └─ chat.py           # "Ask" page — functional BM25 document-search workspace (no fake AI)
 ```
 
 **Navigation:** the app uses Streamlit's native multipage navigation (`st.navigation` + `st.Page`)
 declared in `app.py`. This is the single source of truth for navigation state — there is no
-duplicate radio or decorative pill navigation. The native sidebar nav is themed via the
-`stSidebarNav` data-testid selector in `theme.py`. Each `st.Page` carries an explicit `url_path`
+duplicate radio or decorative pill navigation. `st.navigation` is rendered **hidden**
+(`position="hidden"`) so the sidebar can be ordered **brand → navigation → status**; the visible
+nav is drawn with one `st.page_link` per page (the same native widget the sidebar nav uses, so it
+keeps the active-page highlight and URL routing). The page links are themed via the `stPageLink`
+data-testid selector in `theme.py`. Each `st.Page` carries an explicit `url_path`
 (`documents` / `ask`) so the active page is stable across reruns and shareable via URL.
 
 **Separation of concerns:**
@@ -87,6 +90,27 @@ The client never raises raw `httpx` exceptions to the UI. It raises a small set 
 
 The presentation layer maps these to concise messages and never exposes raw internal exceptions.
 
+### Milestone 2 — retrieval API integration
+
+The client exposes three additional methods that map 1:1 to the backend retrieval contract
+(`docs/contracts/api.md`):
+
+| Method | Endpoint | Returns |
+| --- | --- | --- |
+| `search(query, top_k=None)` | `POST /search` | `SearchResponse` (`query`, `mode`, `results[]`, `citations[]`) |
+| `index_document(document_id)` | `POST /documents/{id}/index` | `IndexResult` (`document_id`, `chunks_indexed`, `vectors_added`) |
+| `index_status()` | `GET /index/status` | `IndexStatus` (`documents_indexed`, `chunks_indexed`, `vectors_present`, `retrieval_mode`, `collection`) |
+
+The models (`SearchResult`, `Citation`, `SearchResponse`, `IndexStatus`, `IndexResult`) and their
+defensive parsers live in `api/models.py`. A `top_k` of `None` is omitted from the request body so
+the backend default applies. Empty / invalid queries surface as `HTTPStatusError(422)`; an unknown
+document as `HTTPStatusError(404)`; a document with no extractable text as `HTTPStatusError(409)`.
+
+> **BM25 note (not a bug):** on very small corpora, a term that appears in *every* chunk has
+> inverse-document-frequency ≤ 0, which rank-bm25 clamps to 0, so that term contributes no score and
+> the query can return no matches. This is documented in the backend handoff; the frontend simply
+> renders the (possibly empty) result set honestly.
+
 ## Visual identity — "Aurora"
 
 The frontend has an original visual identity ("Aurora"): a deep-space AI theme with a deep navy
@@ -105,32 +129,48 @@ deliberately *not* gated by a session-state flag: gating caused the theme to be 
 navigating between pages (the flag was set on the first page but the CSS element was not re-emitted
 on the second page). Re-injecting is cheap (a single `<style>` block) and guarantees the theme is
 present on every page and after every rerun. It targets Streamlit's stable element selectors
-(including `stHeader`, `stToolbar`, and `stSidebarNav`) plus a small set of bespoke `.aurora-*`
+(including `stHeader`, `stToolbar`, and `stPageLink`) plus a small set of bespoke `.aurora-*`
 classes — no fragile, deeply-nested selectors.
 
 ## UI
 
-- **Branded sidebar:** original logo mark + "Aurora" wordmark + tagline, a live
-  backend-connection status pill (green "Backend connected" / red "Backend offline" / amber
-  "Checking…"), and the **native** `st.navigation` sidebar nav (Documents / Ask) themed to match the
-  Aurora palette. The nav is the single source of truth for navigation state — there is no
-  duplicate radio or decorative pill navigation.
+- **Branded sidebar:** original logo mark + "Aurora" wordmark + tagline, the **native** page
+  navigation (Documents / Ask) drawn with `st.page_link` and themed to match the Aurora palette,
+  and a live backend-connection status pill (green "Backend connected" / red "Backend offline" /
+  amber "Checking…"). The sidebar is ordered **brand → navigation → status** for a clear visual
+  hierarchy. The nav is the single source of truth for navigation state — there is no duplicate
+  radio or decorative pill navigation.
 - **Documents page:**
   - **Overview cards** — four stat cards derived from **real** backend data (never fabricated):
     Total documents, Processed, Errors, and Backend status. When the collection cannot be loaded
     the document-derived cards show a neutral "—".
-   - **Upload panel** — a gradient-accented card with a single, fully-styled `st.file_uploader`
-     (PDF only, 25 MB limit stated in the help text to match the backend), a loading spinner, and
-     success/error feedback. The decorative drag-and-drop zone was removed so the upload control is
-     one coherent, functional element rather than a decorative dropzone plus a separate native
-     uploader. On success the collection is refreshed so the new document appears immediately.
+    - **Upload panel** — a gradient-accented card with a single, fully-styled `st.file_uploader`
+      (PDF only, 25 MB limit stated in the help text to match the backend), a loading spinner, and
+      success/error feedback. The decorative drag-and-drop zone was removed so the upload control is
+      one coherent, functional element rather than a decorative dropzone plus a separate native
+      uploader. On success the collection is refreshed so the new document appears immediately.
+  - **Search-index panel** — a card that shows the **real** global index status (documents indexed,
+    chunks, retrieval mode, vectors present) and offers an idempotent **Index document** action: a
+    selectbox of processed documents + a button that calls `POST /documents/{id}/index`. The result
+    (chunks indexed) is shown immediately; 404/409/5xx are mapped to concise messages. Index status
+    is cached in session state and best-effort (an offline backend shows "Index status unavailable."
+    rather than crashing).
   - **Document library** — a responsive grid of document cards (filename, status badge, page
     count, upload timestamp, document ID, and an inline error reason for failed documents) with a
     **client-side toolbar**: search by name, sort (newest / oldest / name A–Z), and filter
     (all / processed / errors). Includes a "no matches" state and a Refresh control.
-- **Ask page:** a polished "In development" panel with feature cards (document search,
-  natural-language questions, grounded answers, source citations). It is clearly identified as a
-  future feature and does not pretend to provide working AI functionality.
+- **Ask page (Milestone 2 — functional document search):** a real **BM25 lexical retrieval
+  workspace**, not a generative-AI chat. It shows:
+  - A clear **retrieval-mode indicator** ("BM25 · keyword retrieval") with an honest note that
+    semantic / AI answers arrive in a later milestone.
+  - A `st.form` search panel (query input + "Search documents" submit) plus example-query buttons
+    (shown only before the first search).
+  - **Ranked result cards**: rank badge, filename, page, score, an expandable passage, and a source
+    citation line — all from the real `POST /search` response.
+  - Distinct states: initial guidance (with a "no documents indexed yet" variant that points to the
+    Documents page), a "no matching passages" state (a valid empty result, not an error), and
+    concise error messages for offline / timeout / HTTP / unexpected responses.
+  - No AI-generated answers are fabricated; results are real retrieved passages with citations.
 
 ### Statuses
 
@@ -145,9 +185,16 @@ dropped), so a future backend status does not break the UI.
 - **Loading** — spinners for upload and collection load.
 - **Empty collection** — a styled empty state ("No documents yet").
 - **No matches** — when search/filter excludes all documents.
-- **Success** — upload success message; the collection refreshes automatically.
-- **Error** — upload failures (invalid PDF, oversized, server error), list failures, and per-document
-  processing errors (shown inline on the document card).
+- **Success** — upload success message; the collection refreshes automatically; index success
+  message with the chunk count.
+- **Error** — upload failures (invalid PDF, oversized, server error), list failures, per-document
+  processing errors (shown inline on the document card), index failures (404 unknown document,
+  409 no extractable text, 5xx), and search failures (offline / timeout / 422 / 5xx / unexpected
+  body) — all mapped to concise, user-facing messages.
+- **Search: no results** — a styled "No matching passages found" state (a valid empty result, not
+  an error) with guidance to try different keywords or index more documents.
+- **Search: nothing indexed** — an initial-guidance variant that explains no documents are indexed
+  yet and points to the Documents page.
 
 ## Testing
 
@@ -155,21 +202,27 @@ Frontend tests live in `tests/frontend/` and **do not require a running producti
 credentials, or network access**:
 
 - `test_api_client.py` — request construction (method, path, multipart field), upload 201 handling,
-  list parsing, and error states (400/404/413/500, timeout, offline, unexpected body). A
-  `TestAgainstRealBackend` class additionally validates the client against the **actual FastAPI
-  app** in-process (via `TestClient`'s transport) to confirm the request/response shapes match the
-  backend contract.
+  list parsing, and error states (400/404/413/500, timeout, offline, unexpected body). Milestone 2
+  adds `TestSearch` (request construction, `top_k` omission, response parsing, empty results, 422,
+  offline, timeout, unexpected body), `TestIndexDocument` (construction, 404, 409, offline), and
+  `TestIndexStatus` (construction, offline). A `TestAgainstRealBackend` class and a
+  `TestRetrievalAgainstRealBackend` class additionally validate the client against the **actual
+  FastAPI app** in-process (via `TestClient`'s transport) to confirm the request/response shapes
+  match the backend contract (index status shape, empty-index search, 404, 422).
 - `test_models.py` — document/list parsing, required-field validation, the `error` field, and
-  status semantics.
+  status semantics; plus search-result / citation / index-status / index-result parsing.
 - `test_config.py` — `API_BASE_URL` resolution (default, env override, trailing-slash, blank) and
   PDF filename detection.
 - `test_view_and_theme.py` — the client-side library view logic (search / sort / filter, including
   combined and no-match cases) and the theme module (logo SVG well-formedness, CSS contains the
-  core classes, status-badge variants, and HTML-escaping of card values).
+  core classes — now including `stPageLink`, `.aurora-mode`, `.aurora-result`,
+  `.aurora-index-status` — status-badge variants, and HTML-escaping of card values).
 - `test_navigation_theme_upload.py` — `AppTest`-based rendering of the real app: a single native
   `st.navigation` (no duplicate radio / decorative pills), the Aurora theme present and idempotent
   (one `<style>` block) on every rerun, a single PDF-only file uploader with accurate 25 MB
-  messaging, the backend status pill states, and the Ask page "coming soon" panel (no fake chat).
+  messaging, the backend status pill states, the sidebar hierarchy (brand → nav → status) with
+  `st.page_link` elements, and the Ask page search workspace (mode indicator, search input, example
+  buttons, no fake chat) plus rendered result cards.
 
 A `conftest.py` provides a fake `httpx` transport and makes the `frontend` package importable.
 
@@ -188,24 +241,29 @@ Docker Compose (see `docs/development.md`):
 docker compose up
 ```
 
-## Validation (Milestone 1 + visual redesign)
+## Validation (Milestone 2 — document search & retrieval)
 
 Executed on this machine (Windows):
 
-- `uv run ruff check frontend/ tests/frontend/` — passed.
-- `uv run ruff format --check frontend/ tests/frontend/` — passed (my files formatted).
-- `uv run pytest tests/frontend/` — **80 passed** (52 original + 14 view/theme + 14
-  navigation/theme/upload `AppTest` tests).
-- **End-to-end (real backend):** started the FastAPI app on `127.0.0.1:8000`; the frontend client
-  uploaded a PDF (→ `processed`, `page_count=1`) and listed the collection through the live HTTP
-  API. The Streamlit `AppTest` rendered the redesigned dashboard with **0 exceptions**: overview
-  stat cards, the document-card grid (document ID demoted to a details line), the single styled
-  file uploader (25 MB help text), processed + error badges, the branded logo, the native
-  `st.navigation` sidebar nav (no duplicate radio), the online status pill, and the
-  search/sort/filter toolbar. The theme CSS (all `.aurora-*` + `stSidebarNav` + `stHeader` +
-  `stFileUploader` classes) was confirmed present in the rendered output as a single `<style>`
-  block. The offline state was verified (red status pill, offline banner, neutral stat cards,
-  empty state). Test artifacts were cleaned up (`.data/` is git-ignored).
+- `uv run ruff check .` — passed (whole repo clean).
+- `uv run ruff format --check .` — passed (92 files already formatted).
+- `uv run pytest tests/frontend/` — **101 passed** (Milestone 1 suite + 18 new tests for the
+  search / index / status API client and the Ask search workspace).
+- `uv run pytest` (full repo: backend + frontend + integration) — **221 passed**.
+- **End-to-end (real backend, live HTTP):** started the FastAPI app on `127.0.0.1:8000` and drove
+  the full cycle through the frontend client:
+  1. Upload a 3-page PDF → `processed`, `page_count=3`.
+  2. `POST /documents/{id}/index` → `chunks_indexed=3`, `vectors_added=0` (lexical-only).
+  3. `GET /index/status` → `documents_indexed`, `chunks_indexed`, `retrieval_mode=lexical`,
+     `vectors_present=False`.
+  4. `POST /search` "Page 2" → ranked results, top result on page 2, citations present.
+  5. No-match query → `results: []` (valid empty, not an error).
+  6. Empty query → `HTTPStatusError(422)`.
+- **Streamlit `AppTest`:** the Ask page renders with **0 exceptions** — BM25 mode indicator, search
+  input, example-query buttons, and the empty/guidance states; result cards render with rank,
+  filename, page, score, expandable passage, and citation. The sidebar renders in the order
+  brand → `st.page_link` nav → status pill. The theme CSS (all `.aurora-*` + `stPageLink` +
+  `stHeader` + `stFileUploader` classes) is present as a single `<style>` block.
 
 > Note: the full repository `pytest` run also includes the RAG integration tests
 > (`tests/integration/test_retrieval_infrastructure.py`). The full suite (backend + frontend +
@@ -213,7 +271,9 @@ Executed on this machine (Windows):
 
 ## Known limitations
 
-- The `Ask` page is a placeholder only; no AI functionality is implemented (out of scope).
+- The `Ask` page performs **lexical (BM25) retrieval only**. Natural-language question answering
+  and grounded LLM answers are out of scope for Milestone 2 (planned Milestone 3+); the UI is
+  clearly labelled as "BM25 · keyword retrieval" and does not fabricate AI answers.
 - Document **deletion** is not exposed in the UI (no `DELETE /documents/{id}` endpoint in the
   current contract). This is a future addition.
 - The frontend's 25 MB upload limit is a client-side pre-check; the backend enforces the real

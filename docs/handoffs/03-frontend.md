@@ -1,12 +1,127 @@
 # Handoff — Agent 3 (Frontend Engineering)
 
 ## Current status
-Milestone 1 (Document Management Interface) is **implemented, validated, and now UI/UX-refined**.
-This handoff records a focused **critical UI/UX review and refinement** of the existing "Aurora"
-design system. Four concrete defects were found and fixed: broken/duplicated navigation, theme loss
-on page change, header clipping, and a disconnected upload UI. All Milestone 1 functionality is
-preserved. The conversational ("Ask") area remains a clearly-identified "In development" placeholder
-(no working AI).
+**Milestone 2 (Document Search & Retrieval Experience) is implemented and validated.** The "Ask"
+page is now a **functional BM25 lexical-retrieval workspace** (no fake AI), the Documents page gained
+a **search-index panel** (status + idempotent per-document index action), and the UI received a
+focused **UX refinement** (wider responsive layout, larger typography, and a clear sidebar
+hierarchy: brand → navigation → status). All Milestone 1 functionality is preserved. The
+conversational / grounded-answer experience remains a clearly-labelled future area (Milestone 3+).
+
+This handoff supersedes the Milestone 1 UI/UX-refinement notes below; both are retained for history.
+
+## Milestone 2 — Document Search & Retrieval Experience
+
+All changes are within Agent 3 ownership (`frontend/`, `tests/frontend/`). No backend, dependency,
+or infrastructure changes. The frontend now consumes the three retrieval endpoints already shipped
+by the backend (Milestone 2, lexical-only).
+
+### What was built
+1. **API client + models (`frontend/api/`).** Added `SearchResult`, `Citation`, `SearchResponse`,
+   `IndexStatus`, `IndexResult` dataclasses with defensive parsers, and three client methods:
+   `search(query, top_k=None)` → `POST /search`, `index_document(document_id)` →
+   `POST /documents/{id}/index`, `index_status()` → `GET /index/status`. `top_k=None` is omitted
+   from the body so the backend default applies. All reuse the existing typed-error model
+   (`BackendUnavailableError`, `RequestTimeoutError`, `HTTPStatusError`, `UnexpectedResponseError`).
+2. **Ask page — functional search workspace (`frontend/components/chat.py`).** Replaced the
+   "In development" placeholder with a real BM25 retrieval UI: a retrieval-mode indicator
+   ("BM25 · keyword retrieval" + honest note that semantic/AI answers arrive later), a `st.form`
+   search panel (query + submit) with example-query buttons, and **ranked result cards** (rank,
+   filename, page, score, expandable passage, source citation). Distinct states: initial guidance
+   (with a "nothing indexed yet" variant), "no matching passages" (valid empty, not an error), and
+   concise error messages (offline / timeout / 422 / 5xx / unexpected body). No AI answers are
+   fabricated.
+3. **Documents page — search-index panel (`frontend/components/documents.py`).** A card showing the
+   **real** global index status (documents indexed, chunks, retrieval mode, vectors present) plus an
+   idempotent **Index document** action (selectbox of processed documents + button →
+   `POST /documents/{id}/index`). Result (chunk count) shown immediately; 404/409/5xx mapped to
+   concise messages. Index status is cached in session state and best-effort (offline →
+   "Index status unavailable.", no crash).
+4. **UX refinement (`frontend/theme.py`, `frontend/components/layout.py`, `frontend/app.py`).**
+   - Wider responsive layout: `.block-container` `max-width` 1440px (1100px at ≤1200px), larger
+     base font (16px) and bumped heading/caption/label sizes.
+   - **Sidebar hierarchy** brand → navigation → status. `st.navigation` is now rendered **hidden**
+     (`position="hidden"`); the visible nav is drawn with one `st.page_link` per page (same native
+     widget, so it keeps the active-page highlight + URL routing). `theme.py` themes `stPageLink`
+     (replacing the old `stSidebarNav` rules).
+   - `layout.py` split into `render_sidebar_brand()` / `render_sidebar_nav(pages, active_page)` /
+     `render_sidebar_status()` so `app.py` controls the ordering.
+
+### Files modified (Agent 3 ownership only)
+- `frontend/api/client.py` — `search()`, `index_document()`, `index_status()`.
+- `frontend/api/models.py` — `SearchResult`, `Citation`, `SearchResponse`, `IndexStatus`,
+  `IndexResult` + parsers.
+- `frontend/components/chat.py` — rewritten as the functional search workspace.
+- `frontend/components/documents.py` — added the search-index panel.
+- `frontend/components/layout.py` — split sidebar into brand / nav / status; `st.page_link` nav.
+- `frontend/app.py` — `st.navigation(..., position="hidden")`; sidebar brand → nav → status;
+  `nav.run()`; passes a `DocumentAPIClient` to the Ask page.
+- `frontend/state.py` — added search/index session-state keys.
+- `frontend/theme.py` — wider layout, larger typography, `stPageLink` theming, `.aurora-mode`,
+  `.aurora-result`, `.aurora-index-status`, search-form styling.
+- `tests/frontend/test_api_client.py` — added `TestSearch`, `TestIndexDocument`, `TestIndexStatus`,
+  `TestRetrievalAgainstRealBackend`.
+- `tests/frontend/test_navigation_theme_upload.py` — Ask search-workspace + result-card tests;
+  sidebar-hierarchy + `st.page_link` tests.
+- `tests/frontend/test_view_and_theme.py` — updated CSS-class assertions.
+- `docs/frontend.md` — updated for Milestone 2.
+
+No new dependencies (still the existing `httpx`). No shared, backend, or infrastructure files were
+modified.
+
+### API assumptions (Milestone 2)
+The frontend now also consumes the retrieval endpoints in `docs/contracts/api.md`:
+- `POST /search` body `{query, top_k?}` → `200 {query, mode, results[], citations[]}`;
+  `422` empty/invalid query; empty match → `200 results: []`.
+- `POST /documents/{id}/index` → `200 {document_id, chunks_indexed, vectors_added}`; `404` unknown
+  document; `409` no extractable text.
+- `GET /index/status` → `200 {documents_indexed, chunks_indexed, vectors_present, retrieval_mode,
+  collection}`.
+
+> **BM25 note (not a bug):** on very small corpora a term present in *every* chunk has IDF ≤ 0,
+> which rank-bm25 clamps to 0, so the query can return no matches. Documented in the backend
+> handoff; the frontend renders the (possibly empty) result set honestly.
+
+### Validation results (actually executed on this machine)
+- `uv run ruff check .` — passed (whole repo clean).
+- `uv run ruff format --check .` — passed (92 files already formatted).
+- `uv run pytest tests/frontend/` — **101 passed** (Milestone 1 suite + 18 new tests).
+- `uv run pytest` (full repo: backend + frontend + integration) — **221 passed**.
+- **End-to-end (real backend, live HTTP on `127.0.0.1:8000`):** upload a 3-page PDF → `processed`;
+  `POST /documents/{id}/index` → `chunks_indexed=3`, `vectors_added=0`; `GET /index/status` →
+  lexical mode, `vectors_present=False`; `POST /search` "Page 2" → ranked results, top on page 2,
+  citations present; no-match query → `results: []`; empty query → `HTTPStatusError(422)`.
+- **Streamlit `AppTest`:** Ask page renders with **0 exceptions** (mode indicator, search input,
+  example buttons, guidance/empty states, result cards); sidebar renders brand → `st.page_link` nav
+  → status; theme CSS present as a single `<style>` block.
+
+### Known limitations (Milestone 2)
+- The Ask page is **lexical (BM25) only**; natural-language Q&A and grounded LLM answers are
+  Milestone 3+. The UI is clearly labelled "BM25 · keyword retrieval" and does not fabricate AI
+  answers.
+- Document **deletion** is not exposed in the UI (no `DELETE /documents/{id}` endpoint).
+- The 25 MB upload limit is a client-side pre-check; the backend enforces the real limit.
+- The theme is a single primary (dark) design; a light-mode toggle is not implemented.
+- Cross-platform (Linux) frontend rendering was not executed here; the code is portable.
+
+### Remaining tasks (for later milestones)
+- **Milestone 3+:** grounded LLM answers over the retrieved passages (the Ask page and the
+  search/results rendering are already scaffolded; a clearly-separated "generated answer" section
+  is the intended addition, distinct from the retrieved passages).
+- Add document deletion to the UI once the backend exposes it.
+- Optional: a light-mode toggle, and a richer per-document detail view.
+
+### Notes for Agent 1 / Agent 2 (Milestone 2)
+- The work is **frontend-only**; no contract, dependency, or infrastructure changes are required.
+- The frontend reads `API_BASE_URL` from the environment only; it does not import backend internals.
+- No new dependencies were introduced.
+- **Working-tree note:** I did **not** touch any file outside `frontend/` and `tests/frontend/`
+  (plus my own `docs/frontend.md` and this handoff). I did not create a commit (other agents may
+  have uncommitted work).
+
+---
+
+## Milestone 1 (historical) — UI/UX refinement
 
 ## What was wrong (root causes) and what changed
 All changes are within Agent 3 ownership (`frontend/`, `tests/frontend/`). No backend, dependency,
@@ -112,8 +227,9 @@ Browser inspection was not available in this environment, so please confirm visu
   functional 25 MB pre-check and backend enforcement are unaffected, so this is cosmetic only.
 
 ## Remaining tasks (for later milestones)
-- Milestone 2+: the conversational experience (question input, grounded answers, source citations).
-  The `Ask` page and navigation are already scaffolded and styled.
+- Milestone 3+: the conversational experience (grounded answers over retrieved passages, source
+  citations). The `Ask` page search workspace and result rendering are already scaffolded and
+  styled (Milestone 2).
 - Add document deletion to the UI once the backend exposes it.
 - Optional: a light-mode toggle, and a richer per-document detail view.
 

@@ -111,11 +111,14 @@ class TestTheme:
             ".aurora-doc",
             ".aurora-badge",
             ".aurora-empty",
-            ".aurora-coming-soon",
-            # Native st.navigation nav is styled via the stSidebarNav data-testid selector
-            # (the old decorative .aurora-nav-item pills were removed in favour of st.navigation).
-            "stSidebarNav",
+            # The sidebar nav is drawn with st.page_link (st.navigation is hidden so the sidebar
+            # can be ordered brand -> nav -> status); it is styled via the stPageLink selector.
+            "stPageLink",
             ".aurora-status",
+            # Milestone 2 search UI.
+            ".aurora-mode",
+            ".aurora-result",
+            ".aurora-index-status",
         ):
             assert cls in css, f"missing CSS class {cls}"
 

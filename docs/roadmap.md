@@ -26,7 +26,7 @@ agents can begin work without restructuring the repository.
 **Exit criteria:** upload/processing/listing/inspection operational end-to-end (native + Docker);
 contract matches implementation; automated checks pass; runtime documents stay out of version control.
 
-## Phase 2 / Milestone 2 — Advanced RAG infrastructure *(platform + backend complete; frontend search UI pending)*
+## Phase 2 / Milestone 2 — Advanced RAG infrastructure *(complete)*
 
 **Platform & contracts (Agent 1, complete):**
 - Dependencies: `chromadb` (embedded) + `rank-bm25`; `huggingface-hub<1` constraint to keep Starlette
@@ -46,14 +46,14 @@ retriever with graceful degradation, and the `/documents/{id}/index`, `/index/st
 endpoints — all functional and tested. Embeddings are interface-only here; a concrete provider is
 added in Milestone 3. See `docs/backend.md`.
 
-**Frontend implementation (Agent 3, pending):** index/status UI and a search panel consuming
-`POST /search`, rendering results with filename/page/score and metadata-derived citations. The
-"Ask" page is currently a clearly-identified placeholder; the frontend does not yet call the
-Milestone 2 endpoints.
+**Frontend implementation (Agent 3, complete):** index/status panel on the Documents page and a
+functional BM25 search workspace on the Ask page, consuming `POST /search`, `POST
+/documents/{id}/index`, and `GET /index/status`, rendering ranked results with filename/page/score
+and metadata-derived citations. See `docs/frontend.md`.
 
 **Exit criteria:** lexical-only search works end-to-end (native + Docker) with no credentials;
-contract matches implementation; automated checks pass; no vector data committed. Backend exit
-criteria are met; the frontend search UI remains the open item.
+contract matches implementation; automated checks pass; no vector data committed. All exit criteria
+met.
 
 ## Phase 3 / Milestone 3 — Retrieval quality and LLM integration
 - Concrete OpenAI-compatible **embedding provider** wired against `embedding_base_url` /

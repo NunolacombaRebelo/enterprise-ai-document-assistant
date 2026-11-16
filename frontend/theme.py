@@ -87,12 +87,19 @@ def _css() -> str:
 /* ---- Base surface ------------------------------------------------------- */
 html, body, [class*="css"] {{
   color: {TEXT_PRIMARY};
+  font-size: 16px;
 }}
 .stApp {{
   background: radial-gradient(1200px 600px at 80% -10%, rgba(139, 92, 246, 0.18), transparent 60%),
               radial-gradient(900px 500px at 0% 0%, rgba(59, 130, 246, 0.16), transparent 55%),
               {BG_PRIMARY};
   color: {TEXT_PRIMARY};
+  font-size: 16px;
+}}
+/* Body copy is slightly larger and more legible than Streamlit's default. */
+.stApp p, .stApp li {{
+  font-size: 1rem;
+  line-height: 1.55;
 }}
 
 /* ---- Streamlit header + toolbar (dark, no white strip, no clipping) ----- */
@@ -106,11 +113,18 @@ html, body, [class*="css"] {{
 [data-testid="stToolbar"] [data-testid="stToolbarItems"] {{
   background: transparent;
 }}
-/* Main content starts clear of the fixed header so nothing is clipped. */
+/* Main content starts clear of the fixed header so nothing is clipped.
+   Wider on large screens to use the available space, but capped so long passages
+   keep a readable line length. */
 .block-container {{
-  max-width: 1280px;
+  max-width: 1440px;
   padding-top: 4.5rem;
   padding-bottom: 3rem;
+  padding-left: 2.5rem;
+  padding-right: 2.5rem;
+}}
+@media (max-width: 1200px) {{
+  .block-container {{ max-width: 1100px; }}
 }}
 
 /* ---- Typography --------------------------------------------------------- */
@@ -119,12 +133,33 @@ h1, h2, h3, h4 {{
   font-weight: 650;
   letter-spacing: -0.01em;
 }}
+h1 {{ font-size: 2rem; }}
+h2 {{ font-size: 1.5rem; }}
+h3 {{ font-size: 1.2rem; }}
 .stApp [data-testid="stCaptionContainer"] p,
 .stApp p {{
   color: {TEXT_MUTED};
 }}
 .stApp [data-testid="stMarkdownContainer"] {{
   color: {TEXT_PRIMARY};
+}}
+/* Secondary / caption text is readable, not tiny. */
+.stApp [data-testid="stCaptionContainer"] p {{
+  font-size: 0.9rem;
+  color: {TEXT_MUTED};
+}}
+/* Control labels (selectbox / text_input / radio labels) are clear and legible. */
+.stApp label,
+.stApp [data-testid="stLabel"] p,
+.stApp .stRadio label {{
+  font-size: 0.92rem;
+  color: {TEXT_PRIMARY};
+  font-weight: 550;
+}}
+/* Sidebar text is legible at a comfortable size. */
+section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] label {{
+  font-size: 0.9rem;
 }}
 
 /* ---- Sidebar ------------------------------------------------------------ */
@@ -141,14 +176,15 @@ section[data-testid="stSidebar"] hr {{
   opacity: 1;
 }}
 
-/* ---- Native st.navigation sidebar nav (the single navigation system) ---- */
-section[data-testid="stSidebar"] [data-testid="stSidebarNav"] {{
-  padding: 0.5rem 0.25rem 0;
+/* ---- Sidebar navigation (native st.page_link, the single navigation system) ----
+   The native st.navigation widget is hidden so the sidebar can be ordered brand → nav →
+   status; the visible nav is drawn with st.page_link, which uses the same active-page
+   highlighting and URL routing. */
+section[data-testid="stSidebar"] [data-testid="stPageLink"] {{
+  display: block;
+  margin: 4px 0;
 }}
-section[data-testid="stSidebar"] [data-testid="stSidebarNav"] ul {{
-  gap: 6px;
-}}
-section[data-testid="stSidebar"] [data-testid="stSidebarNav"] a {{
+section[data-testid="stSidebar"] [data-testid="stPageLink"] a {{
   display: flex;
   align-items: center;
   gap: 12px;
@@ -161,17 +197,17 @@ section[data-testid="stSidebar"] [data-testid="stSidebarNav"] a {{
   text-decoration: none;
   transition: all 0.15s ease;
 }}
-section[data-testid="stSidebar"] [data-testid="stSidebarNav"] a:hover {{
+section[data-testid="stSidebar"] [data-testid="stPageLink"] a:hover {{
   background: {BG_SURFACE_2};
   color: {TEXT_PRIMARY};
 }}
-section[data-testid="stSidebar"] [data-testid="stSidebarNav"] a[aria-current="page"] {{
+section[data-testid="stSidebar"] [data-testid="stPageLink"] a[aria-current="page"] {{
   background: linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(139, 92, 246, 0.18));
   border-color: rgba(139, 92, 246, 0.45);
   color: {TEXT_PRIMARY};
   box-shadow: {SHADOW_SM};
 }}
-section[data-testid="stSidebar"] [data-testid="stSidebarNav"] a svg {{
+section[data-testid="stSidebar"] [data-testid="stPageLink"] a svg {{
   flex: none;
 }}
 
@@ -303,7 +339,7 @@ section[data-testid="stSidebar"] [data-testid="stSidebarNav"] a svg {{
   color: {TEXT_PRIMARY};
 }}
 .aurora-stat .aurora-stat-label {{
-  font-size: 0.8rem;
+  font-size: 0.86rem;
   color: {TEXT_MUTED};
   margin-top: 6px;
   font-weight: 500;
@@ -324,7 +360,7 @@ section[data-testid="stSidebar"] [data-testid="stSidebarNav"] a svg {{
   margin-bottom: 4px;
 }}
 .aurora-card-sub {{
-  font-size: 0.82rem;
+  font-size: 0.9rem;
   color: {TEXT_MUTED};
   margin-bottom: 14px;
 }}
@@ -493,7 +529,7 @@ section[data-testid="stSidebar"] [data-testid="stSidebarNav"] a svg {{
   display: flex;
   flex-wrap: wrap;
   gap: 8px 16px;
-  font-size: 0.82rem;
+  font-size: 0.88rem;
   color: {TEXT_MUTED};
 }}
 .aurora-doc-meta .aurora-doc-meta-item {{
@@ -511,7 +547,7 @@ section[data-testid="stSidebar"] [data-testid="stSidebarNav"] a svg {{
   line-height: 1.4;
 }}
 .aurora-doc-details {{
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   color: {TEXT_DIM};
   border-top: 1px solid {BORDER};
   padding-top: 10px;
@@ -520,7 +556,7 @@ section[data-testid="stSidebar"] [data-testid="stSidebarNav"] a svg {{
 .aurora-doc-details .aurora-doc-details-label {{
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  font-size: 0.62rem;
+  font-size: 0.66rem;
   font-weight: 650;
   margin-bottom: 4px;
 }}
@@ -548,6 +584,183 @@ section[data-testid="stSidebar"] [data-testid="stSidebarNav"] a svg {{
   font-size: 0.88rem;
   color: {TEXT_MUTED};
   margin-top: 6px;
+}}
+
+/* ---- Documents: search index status ------------------------------------ */
+.aurora-index-status {{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  padding: 12px 14px;
+  border-radius: {RADIUS_SM};
+  border: 1px solid {BORDER};
+  background: {BG_SURFACE};
+  margin-bottom: 12px;
+  font-size: 0.85rem;
+  color: {TEXT_MUTED};
+}}
+.aurora-index-status-item strong {{
+  color: {TEXT_PRIMARY};
+  font-weight: 700;
+}}
+
+/* ---- Ask / search: mode indicator -------------------------------------- */
+.aurora-mode {{
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: {RADIUS_SM};
+  border: 1px solid {BORDER};
+  background: {BG_SURFACE};
+  margin-bottom: 14px;
+}}
+.aurora-mode-dot {{
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: {ACCENT_CYAN};
+  box-shadow: 0 0 0 4px rgba(34, 211, 238, 0.16);
+  flex: none;
+}}
+.aurora-mode-label {{
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: {TEXT_PRIMARY};
+}}
+.aurora-mode-note {{
+  font-size: 0.74rem;
+  color: {TEXT_DIM};
+}}
+
+/* ---- Ask / search: search form ----------------------------------------- */
+[data-testid="stForm"] {{
+  background: transparent;
+  border: none;
+  padding: 0;
+  gap: 0;
+}}
+[data-testid="stForm"] [data-testid="stFormSubmitButton"] button {{
+  background: {GRADIENT};
+  border: none;
+  color: white;
+  font-weight: 650;
+  border-radius: {RADIUS_SM};
+  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.4);
+}}
+[data-testid="stForm"] [data-testid="stFormSubmitButton"] button:hover {{
+  filter: brightness(1.08);
+}}
+.aurora-examples-label {{
+  font-size: 0.74rem;
+  color: {TEXT_DIM};
+  margin: 14px 0 8px;
+}}
+
+/* ---- Ask / search: results --------------------------------------------- */
+.aurora-results-header {{
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 18px 0 12px;
+}}
+.aurora-results-count {{
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: {TEXT_PRIMARY};
+}}
+.aurora-results-mode {{
+  font-size: 0.8rem;
+  color: {TEXT_MUTED};
+}}
+.aurora-results {{
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}}
+.aurora-result {{
+  background: {BG_SURFACE};
+  border: 1px solid {BORDER};
+  border-radius: {RADIUS};
+  padding: 16px 18px;
+  box-shadow: {SHADOW_SM};
+}}
+.aurora-result-top {{
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}}
+.aurora-result-rank {{
+  flex: none;
+  min-width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 750;
+  font-size: 0.95rem;
+  color: white;
+  background: {GRADIENT};
+}}
+.aurora-result-source {{ flex: 1; min-width: 0; }}
+.aurora-result-filename {{
+  font-size: 1rem;
+  font-weight: 650;
+  color: {TEXT_PRIMARY};
+  word-break: break-word;
+}}
+.aurora-result-meta {{
+  font-size: 0.8rem;
+  color: {TEXT_MUTED};
+  margin-top: 3px;
+}}
+.aurora-result-passage {{
+  margin-top: 12px;
+  border-top: 1px solid {BORDER};
+  padding-top: 10px;
+}}
+.aurora-result-passage summary {{
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: {ACCENT_CYAN};
+  list-style: none;
+}}
+.aurora-result-passage summary::-webkit-details-marker {{ display: none; }}
+.aurora-result-passage summary::before {{ content: "▸ "; }}
+.aurora-result-passage[open] summary::before {{ content: "▾ "; }}
+.aurora-result-text {{
+  margin-top: 10px;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: {TEXT_PRIMARY};
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: {BG_SURFACE_2};
+  border: 1px solid {BORDER};
+  border-radius: {RADIUS_SM};
+  padding: 12px 14px;
+}}
+.aurora-result-cite {{
+  margin-top: 12px;
+  font-size: 0.78rem;
+  color: {TEXT_MUTED};
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}}
+.aurora-result-cite-label {{
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: {TEXT_DIM};
+  border: 1px solid {BORDER};
+  border-radius: 999px;
+  padding: 2px 8px;
 }}
 
 /* ---- Ask / coming soon -------------------------------------------------- */

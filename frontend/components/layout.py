@@ -37,11 +37,10 @@ def setup_page() -> None:
     theme.inject_theme()
 
 
-def render_sidebar_chrome() -> None:
-    """Render the branded sidebar chrome (logo, tagline, backend status).
+def render_sidebar_brand() -> None:
+    """Render the branded header (logo + name + tagline) at the top of the sidebar.
 
-    This is called from each page body so the branded header and status pill appear above the
-    native navigation on every page. The navigation itself is rendered by ``st.navigation``.
+    Called before ``st.navigation`` so the product identity sits above the navigation.
     """
     with st.sidebar:
         theme.brand_header()
@@ -50,7 +49,41 @@ def render_sidebar_chrome() -> None:
             unsafe_allow_html=True,
         )
         st.markdown("<hr>", unsafe_allow_html=True)
+
+
+def render_sidebar_status() -> None:
+    """Render the backend-connection status pill at the bottom of the sidebar.
+
+    Called after ``st.navigation`` so the hierarchy is: brand → navigation → status.
+    """
+    with st.sidebar:
+        st.markdown("<hr>", unsafe_allow_html=True)
         _render_backend_status()
+
+
+def render_sidebar_nav(pages: list, active_page: object) -> None:
+    """Render the main navigation in the sidebar, below the brand.
+
+    ``st.navigation`` with ``position="sidebar"`` pins its widget to the very top of the sidebar,
+    which would place the nav *above* the product identity. To get the conventional hierarchy
+    (brand → navigation → status) we hide the native nav and render one ``st.page_link`` per page
+    here instead. ``st.page_link`` is the same native widget the sidebar nav uses, so it keeps the
+    active-page highlight and URL routing — this is still a single source of truth for navigation
+    (no duplicate radio or decorative pills).
+    """
+    with st.sidebar:
+        for page in pages:
+            is_active = page is active_page
+            st.page_link(
+                page,
+                label=page.title,
+                icon=page.icon or None,
+                use_container_width=True,
+            )
+            # Track active state for styling (the native page_link already highlights the active
+            # page, but we expose the flag for any custom emphasis).
+            if is_active:
+                st.session_state["aurora_active_page"] = page.url_path
 
 
 def _render_backend_status() -> None:

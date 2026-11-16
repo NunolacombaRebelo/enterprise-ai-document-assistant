@@ -14,7 +14,17 @@ import logging
 from typing import Any
 
 import httpx
-from frontend.api.models import Document, parse_document, parse_document_list
+from frontend.api.models import (
+    Document,
+    IndexResult,
+    IndexStatus,
+    SearchResponse,
+    parse_document,
+    parse_document_list,
+    parse_index_result,
+    parse_index_status,
+    parse_search_response,
+)
 
 from frontend import config
 
@@ -199,4 +209,78 @@ class DocumentAPIClient:
         except (ValueError, TypeError) as exc:
             raise UnexpectedResponseError(
                 "The document response was not in the expected format."
+            ) from exc
+
+    # ------------------------------------------------------------------
+    # Milestone 2 — retrieval (index + search)
+    # ------------------------------------------------------------------
+    def index_document(self, document_id: str) -> IndexResult:
+        """Index (or reindex) one document.
+
+        Returns the count of indexed chunks. Raises :class:`HTTPStatusError` with status ``404``
+        (unknown document) or ``409`` (document has no extractable text) for the documented
+        failure cases, and the availability/timeout errors for transport failures.
+        """
+        try:
+            with self._client() as client:
+                response = client.post(f"/documents/{document_id}/index")
+        except httpx.TimeoutException as exc:
+            raise RequestTimeoutError("The indexing request did not complete in time.") from exc
+        except httpx.HTTPError as exc:
+            raise BackendUnavailableError("The backend is not reachable.") from exc
+
+        if response.status_code != 200:
+            raise HTTPStatusError(response.status_code, _extract_detail(response))
+        try:
+            return parse_index_result(response.json())
+        except (ValueError, TypeError) as exc:
+            raise UnexpectedResponseError(
+                "The index response was not in the expected format."
+            ) from exc
+
+    def index_status(self) -> IndexStatus:
+        """Return the current index status (works with an empty index)."""
+        try:
+            with self._client() as client:
+                response = client.get("/index/status")
+        except httpx.TimeoutException as exc:
+            raise RequestTimeoutError("The request did not complete in time.") from exc
+        except httpx.HTTPError as exc:
+            raise BackendUnavailableError("The backend is not reachable.") from exc
+
+        if response.status_code != 200:
+            raise HTTPStatusError(response.status_code, _extract_detail(response))
+        try:
+            return parse_index_status(response.json())
+        except (ValueError, TypeError) as exc:
+            raise UnexpectedResponseError(
+                "The index status response was not in the expected format."
+            ) from exc
+
+    def search(self, query: str, top_k: int | None = None) -> SearchResponse:
+        """Search indexed documents and return ranked results with citations.
+
+        ``query`` must be non-empty (the backend rejects empty queries with ``422``). An empty
+        match is a valid result (``results`` empty), not an error. Raises :class:`HTTPStatusError`
+        with status ``422`` for an empty/invalid query and the availability/timeout errors for
+        transport failures.
+        """
+        body: dict[str, object] = {"query": query}
+        if top_k is not None:
+            body["top_k"] = top_k
+        try:
+            with self._client() as client:
+                response = client.post("/search", json=body)
+        except httpx.TimeoutException as exc:
+            raise RequestTimeoutError("The search did not complete in time.") from exc
+        except httpx.HTTPError as exc:
+            raise BackendUnavailableError("The backend is not reachable.") from exc
+
+        if response.status_code != 200:
+            raise HTTPStatusError(response.status_code, _extract_detail(response))
+        try:
+            return parse_search_response(response.json())
+        except (ValueError, TypeError) as exc:
+            raise UnexpectedResponseError(
+                "The search response was not in the expected format."
             ) from exc

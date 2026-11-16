@@ -1,23 +1,23 @@
 # Handoff — Agent 1 (Platform & Architecture)
 
 ## Current status
-**Milestone 1 (Document Management) is complete and integrated.** All three agents have finished
-their Milestone 1 work and Agent 1 has performed the final integration, quality review, and Git
-consolidation. The repository is on `main` (single branch, single worktree, no remote, nothing
-pushed).
+**Milestones 1 and 2 are complete and fully integrated.** All three agents have finished their work
+and Agent 1 has performed the final integration, quality review, and Git consolidation. The
+repository is on `main`, in sync with `origin/main`
+(`https://github.com/NunolacombaRebelo/enterprise-ai-document-assistant.git`).
 
 Milestone 1 delivers: PDF upload + validation + text extraction + local persistence on the backend,
 and a professional document-management UI on the frontend (upload, collection table with status
 badges, loading/empty/success/error states).
 
-**Milestone 2 (Advanced RAG Infrastructure) — platform + backend complete; frontend search UI
-pending.** Agent 1 delivered the platform layer (dependencies, shared config, the retrieval contract,
-the Milestone 2 API endpoints, ADRs 0007/0008, deterministic integration tests, Docker/data-isolation
-updates). Agent 2 has since implemented the backend (chunking, BM25, embedded-Chroma vector store,
-hybrid retriever, and the three Milestone 2 endpoints) against `docs/contracts/retrieval.md` — see
-`docs/handoffs/02-backend.md`. The system runs in **lexical-only mode** with **no real model
-endpoints or API keys**. Frontend Agent 3 still needs to build the index/status + search UI against
-the Milestone 2 endpoints in `docs/contracts/api.md`. See the coordination log entry below.
+**Milestone 2 (Advanced RAG Infrastructure) — complete.** Agent 1 delivered the platform layer
+(dependencies, shared config, the retrieval contract, the Milestone 2 API endpoints, ADRs 0007/0008,
+deterministic integration tests, Docker/data-isolation updates). Agent 2 implemented the backend
+(chunking, BM25, embedded-Chroma vector store, hybrid retriever, and the three Milestone 2 endpoints)
+against `docs/contracts/retrieval.md` — see `docs/handoffs/02-backend.md`. Agent 3 implemented the
+frontend search experience (index/status panel on the Documents page, functional BM25 search
+workspace on the Ask page) against `docs/contracts/api.md` — see `docs/handoffs/03-frontend.md`.
+The system runs in **lexical-only mode** with **no real model endpoints or API keys**.
 
 ## Coordination log
 
@@ -57,6 +57,58 @@ the system runs in lexical-only mode by default.**
   frontend, 14 integration); `docker compose config` valid.
 - **No commit made:** Agent 3 has uncommitted frontend work in the working tree, so per the
   multi-agent protocol Agent 1 did not commit. Commit on `main` once the tree is clear.
+
+### 2026-11-16 — Milestone 2 final integration + Git consolidation (Agent 1)
+Full integration review of the complete Milestone 2 implementation (Agent 2 backend + Agent 3
+frontend) was performed and the repository was consolidated on `main`.
+- **`.gitignore` source-tracking bug (RESOLVED).** The rule is now `/documents/` (root-anchored),
+  so it no longer matches the source package `src/.../services/documents/`. Verified via
+  `git check-ignore` (exit 1 = not ignored) that all `services/documents/` and `services/retrieval/`
+  source files are tracked (`git ls-files` confirms). Runtime paths (`.data/`, `uploads/`) remain
+  correctly ignored. No further action needed.
+- **ChromaDB zero-vector embedding assessment (no code change; documented).** The
+  `_ZeroEmbeddingFunction` returns a fixed 384-dim zero vector — no ONNX model runs, no download.
+  `vectors_present` gates `query()` so placeholder vectors are never used for ranking; in
+  lexical-only mode Chroma is never queried for similarity. **The "separation of lexical chunk
+  storage from Chroma" already exists:** `ChunkStore` (`.data/chunks/*.json`) is the single source
+  of truth for chunks and BM25 is rebuilt from it on startup; Chroma is a derived store. No
+  refactor is warranted in Milestone 2. **Milestone 3 caveat (coordination note for Agent 2):**
+  `_PLACEHOLDER_DIM = 384` is hardcoded to match the default local model's output dimension. If the
+  Milestone 3 embedding model has a different output dimension (e.g. `text-embedding-3-small` =
+  1536), the collection's fixed dimension will conflict on upsert. Recommend deriving the
+  placeholder dimension from the configured embedding model (or creating the collection lazily on
+  first real-embedding upsert) when real embeddings land.
+- **Frontend Milestone 2 search UI (Agent 3) — verified.** `frontend/api/client.py` now exposes
+  `search()`, `index_document()`, and `index_status()` in addition to the Milestone 1 methods.
+  `chat.py` is a functional BM25 search workspace (mode indicator, search form, ranked result cards
+  with source citations, distinct empty/error states). `documents.py` has a search-index panel
+  (global index status + idempotent per-document Index action). The frontend correctly consumes the
+  three Milestone 2 endpoints per `docs/contracts/api.md`.
+- **End-to-end workflow verified (Dockerized API, port 18000):** upload 4-page PDF → `201`
+  `processed`; `POST /documents/{id}/index` → `200` `chunks_indexed=4`, `vectors_added=0`;
+  `GET /index/status` → `vectors_present=false`, `retrieval_mode=lexical`; `POST /search`
+  "Page 3" → ranked results with correct page attribution, `sources=["bm25"]`, citations present;
+  no-match query → `results: []`; empty query → `422`; reindex idempotent (no chunk duplication).
+- **Persistence across restart verified:** a fresh `IndexService` over the same dirs rebuilds the
+  BM25 index from persisted chunks; the Docker `vector-data` named volume survives container
+  recreation (`documents_indexed` and `chunks_indexed` persist across `docker compose up`).
+- **No embedding model downloaded/executed in lexical-only mode:** 0 ONNX model files in the vector
+  store after indexing; `vectors_added=0`; `vectors_present=false`; mode stays `lexical`.
+- **Validation (executed this machine, Windows):** `uv sync --locked` clean (103 packages);
+  `uv run ruff check .` passed; `uv run ruff format --check .` passed (92 files); `uv run pytest`
+  **221 passed** (106 backend, 101 frontend, 14 integration) in 29.3s; `docker compose config`
+  valid. The single pytest warning is the expected Starlette `httpx` deprecation note (harmless —
+  `httpx2` is intentionally removed by the `huggingface-hub<1` constraint).
+- **Docker (executed this machine, Windows):** `docker compose build` rebuilt both images
+  (`enterprise-ai-document-assistant-api:0.1.0`, `enterprise-ai-document-assistant-frontend:0.1.0`);
+  `docker compose up -d` (host ports 18000/18501) recreated both containers — both **healthy**.
+  Frontend reaches backend over internal network (`http://api:8000/health` → 200). Unrelated
+  containers (`ead-web`, `open-webui`, `hp_product_backend`, `hp_warranty_postgres`, `docker-*`,
+  `dify-*`) were not touched.
+- **Portability/security checks:** no runtime data, `.env`, `.venv`, PDFs, or vector-store files are
+  tracked (106 files); no machine-specific absolute paths (`C:\Users\...`, `/home/...`) in any
+  tracked file; `.dockerignore` correctly excludes runtime data and secrets.
+- **Commit:** consolidated commit on `main` (see below). No push performed.
 
 ### 2026-11-14 — Frontend `ModuleNotFoundError: No module named 'frontend'` (Docker + native)
 **Root cause:** the frontend imports itself as a package (`from frontend.api.client import ...`), but
@@ -106,7 +158,9 @@ files were modified for these fixes.
   include `pypdf`. No commit was made (Agents 2/3 have uncommitted changes).
 
 ## Completed work
-- Git repository initialized on `main` with a local identity (no remote, no push).
+- Git repository on `main`, in sync with `origin/main` (remote
+  `https://github.com/NunolacombaRebelo/enterprise-ai-document-assistant.git`); Milestone 1+2 work
+  consolidated in commit `14940d7`.
 - Python project configured: `pyproject.toml`, `.python-version` (3.12), generated `uv.lock`
   (real resolver, 56 packages), `uv sync --locked` verified.
 - Package structure created (`src/enterprise_ai_document_assistant/`): `api/`, `core/`, `services/`,
@@ -173,6 +227,12 @@ Docker:
   In lexical-only mode this is harmless — retrieval uses BM25, not Chroma vector queries — and
   Milestone 3 upserts real provider vectors over the placeholder. Agent 2 should be aware of this
   when implementing `VectorStore.add`; see the note in `docs/contracts/retrieval.md`.
+- **Milestone 3 placeholder-dimension caveat.** `VectorStore._PLACEHOLDER_DIM = 384` is hardcoded to
+  match the default local model's output dimension. Chroma collections have a fixed dimension per
+  collection, so if the Milestone 3 embedding model has a different output dimension (e.g.
+  `text-embedding-3-small` = 1536), the upsert will conflict. When real embeddings land, derive the
+  placeholder dimension from the configured embedding model (or create the collection lazily on first
+  real-embedding upsert). This is a Milestone 3 concern, not a Milestone 2 blocker.
 - Cross-platform (Linux) validation was not executed here; the repo is designed to be portable but
   Linux runs are documented, not tested, on this machine.
 - Browser-based manual verification of the Streamlit UI was **not** performed in this environment;
@@ -184,15 +244,16 @@ Docker:
   containers; the documented defaults in `compose.yaml` are unchanged and correct for a clean machine.
 
 ## Remaining tasks
-### Milestone 2 — frontend search UI (Agent 3; platform + backend done)
+### Milestone 2 — COMPLETE
 - **Agent 2 (backend): complete.** Chunking, BM25, embedded-Chroma `VectorStore`, `Retriever` with
   lexical/vector/hybrid modes + RRF, and the `POST /documents/{id}/index`, `GET /index/status`,
   `POST /search` endpoints are implemented and tested (see `docs/handoffs/02-backend.md`).
-- **Agent 3 (frontend, pending):** index/status UI + a search panel consuming `POST /search`,
-  rendering results with filename/page/score and metadata-derived citations. The "Ask" page is
-  currently a placeholder; the frontend does not yet call the Milestone 2 endpoints.
-- **Agent 1:** review the Milestone 2 implementation at integration time; add any needed dependency
-  or config changes via coordination.
+- **Agent 3 (frontend): complete.** Index/status panel on the Documents page + functional BM25
+  search workspace on the Ask page, consuming the three Milestone 2 endpoints per
+  `docs/contracts/api.md` (see `docs/handoffs/03-frontend.md`).
+- **Agent 1:** Milestone 2 integration review is **complete** (see the 2026-11-16 coordination log
+  entry). No dependency or config changes were needed. The only forward-looking note for Agent 2 is
+  the Milestone 3 placeholder-dimension caveat (see Known limitations).
 
 ### Later milestones (NOT started)
 - Milestone 3: concrete OpenAI-compatible embedding provider (real vectors upserted over
@@ -213,11 +274,11 @@ Docker:
 7. Inspect `git status` before changes; stage only your own files; no destructive git commands.
 
 ### Agent 2 (Backend) starting points
-- **Milestone 2:** read `docs/contracts/retrieval.md` first — it defines the Chunk model, chunk
-  metadata schema, index lifecycle, BM25/vector/hybrid-RRF/rerank interfaces, and the lexical-only
-  guarantee. Implement chunking + `BM25Index` (rank-bm25) + embedded-Chroma `VectorStore` +
-  `Retriever`, and the three Milestone 2 endpoints from `docs/contracts/api.md`. Embeddings are
-  interface-only here (no concrete provider). See ADRs 0007/0008.
+- **Milestone 3:** read `docs/contracts/retrieval.md` — the `EmbeddingProvider` interface is
+  defined but has no concrete implementation. Implement a concrete OpenAI-compatible embedding
+  provider against `embedding_base_url` / `embedding_api_key`, wire it into `IndexService` and
+  `Retriever`, and upsert real vectors over the zero placeholders. Address the
+  `_PLACEHOLDER_DIM = 384` caveat (see Known limitations) before activating vector/hybrid mode.
 - Extend `src/enterprise_ai_document_assistant/api/main.py` (keep `app` as the app object).
 - Add endpoints under `api/`; business logic in `services/`; RAG in `rag/`; providers in
   `providers/`.
@@ -226,7 +287,9 @@ Docker:
 - Keep `GET /health` working; it is part of the contract.
 
 ### Agent 3 (Frontend) starting points
-- Build the real UI in `frontend/app.py` (replace the placeholder).
+- **Milestone 3:** extend the Ask page to display grounded LLM answers alongside the retrieved
+  passages (clearly separated sections). The search workspace and result rendering are already
+  scaffolded (Milestone 2).
 - Talk to the backend over HTTP using `API_BASE_URL` (native `http://localhost:8000`, Docker
   `http://api:8000`). Never import backend internals.
 - Frontend tests go in `tests/frontend/`.

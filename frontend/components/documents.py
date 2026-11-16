@@ -8,6 +8,7 @@ Owned by Agent 3 (Frontend Engineering).
 
 from __future__ import annotations
 
+import html
 from datetime import datetime
 
 import streamlit as st
@@ -19,7 +20,7 @@ from frontend.api.client import (
     RequestTimeoutError,
     UnexpectedResponseError,
 )
-from frontend.api.models import Document, DocumentStatus
+from frontend.api.models import Document, DocumentStatus, IndexStatus
 from frontend.components import cards
 
 from frontend import config, state, theme
@@ -48,6 +49,7 @@ def render_documents_page(client: DocumentAPIClient) -> None:
     documents = _ensure_documents_loaded(client)
     _render_overview(documents)
     _render_upload_panel(client)
+    _render_index_panel(client, documents)
     _render_library(client, documents)
 
 
@@ -176,6 +178,130 @@ def _render_http_error(exc: HTTPStatusError) -> None:
         st.error("The server could not process the upload. Please try again.")
     else:
         st.error(f"Upload failed ({exc.status_code}). Please try again.")
+
+
+# ---------------------------------------------------------------------------
+# Search index (Milestone 2)
+# ---------------------------------------------------------------------------
+def _render_index_panel(client: DocumentAPIClient, documents: list[Document] | None) -> None:
+    """Render the search-index panel: global index status + a per-document Index action.
+
+    The backend exposes only a *global* index status (counts), not a per-document "indexed" flag,
+    so this panel shows the aggregate status and offers an idempotent Index action for any
+    processed document. Indexing is synchronous on the backend; the result (chunks indexed) is
+    shown immediately. A single ``st.button`` fires only on the rerun caused by its click, so no
+    duplicate indexing requests are issued on ordinary reruns.
+    """
+    st.markdown(
+        '<div class="aurora-card-title" style="margin-top:18px;">Search index</div>'
+        '<div class="aurora-card-sub">Index processed documents so they can be searched '
+        "on the Ask page.</div>",
+        unsafe_allow_html=True,
+    )
+
+    status = _load_index_status(client)
+    _render_index_status(status)
+
+    processed = [d for d in (documents or []) if d.status == DocumentStatus.PROCESSED]
+    if not processed:
+        st.caption("No processed documents available to index yet.")
+        return
+
+    options = [f"{d.filename}  ({d.id[:8]}…)" for d in processed]
+    choice = st.selectbox(
+        "Document to index",
+        options=options,
+        key="index_doc_select",
+        help=(
+            "Indexing is idempotent: re-indexing a document replaces its chunks "
+            "rather than duplicating them."
+        ),
+    )
+    if st.button("Index document", key="index_doc_button"):
+        doc = processed[options.index(choice)]
+        _perform_index(client, doc)
+
+
+def _render_index_status(status: IndexStatus | None) -> None:
+    """Render the global index status as a compact line (never fabricated)."""
+    if status is None:
+        st.caption("Index status unavailable.")
+        return
+    vectors = "vectors present" if status.vectors_present else "lexical-only (no vectors)"
+    st.markdown(
+        f"""
+<div class="aurora-index-status">
+  <span class="aurora-index-status-item"><strong>{status.documents_indexed}</strong>
+    documents indexed</span>
+  <span class="aurora-index-status-item"><strong>{status.chunks_indexed}</strong> chunks</span>
+  <span class="aurora-index-status-item">mode: {_esc(status.retrieval_mode)}</span>
+  <span class="aurora-index-status-item">{_esc(vectors)}</span>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+def _load_index_status(client: DocumentAPIClient) -> IndexStatus | None:
+    """Fetch the index status once per session (best-effort; cached in session state)."""
+    cached = state.get(state.KEY_INDEX_STATUS)
+    if cached is not None:
+        return cached
+    try:
+        status = client.index_status()
+    except (
+        BackendUnavailableError,
+        RequestTimeoutError,
+        HTTPStatusError,
+        UnexpectedResponseError,
+        APIError,
+    ):
+        return None
+    state.set_value(state.KEY_INDEX_STATUS, status)
+    return status
+
+
+def _perform_index(client: DocumentAPIClient, doc: Document) -> None:
+    """Index one document and record the outcome in session state."""
+    with st.spinner(f"Indexing {doc.filename}…"):
+        try:
+            result = client.index_document(doc.id)
+        except BackendUnavailableError:
+            st.error("The backend is not reachable. Please try again.")
+            return
+        except RequestTimeoutError:
+            st.error("The indexing request did not complete in time. Please try again.")
+            return
+        except HTTPStatusError as exc:
+            _render_index_http_error(exc)
+            return
+        except (UnexpectedResponseError, APIError):
+            st.error("Indexing failed. Please try again.")
+            return
+
+    state.set_value(state.KEY_INDEX_RESULT, result)
+    # Refresh the cached index status so the counts reflect the new chunks.
+    state.set_value(state.KEY_INDEX_STATUS, None)
+    st.success(
+        f"Indexed “{doc.filename}” — {result.chunks_indexed} chunk(s) added to the search index."
+    )
+
+
+def _render_index_http_error(exc: HTTPStatusError) -> None:
+    """Map an indexing HTTP error to a concise, user-facing message."""
+    if exc.status_code == 404:
+        st.error("That document no longer exists. Refresh the list and try again.")
+    elif exc.status_code == 409:
+        st.error("This document has no extractable text, so it cannot be indexed.")
+    elif exc.status_code in (500, 502, 503):
+        st.error("The server could not index the document. Please try again.")
+    else:
+        st.error(f"Indexing failed ({exc.status_code}). Please try again.")
+
+
+def _esc(value: object) -> str:
+    """HTML-escape a value for safe interpolation into markup."""
+    return html.escape(str(value), quote=True)
 
 
 # ---------------------------------------------------------------------------
